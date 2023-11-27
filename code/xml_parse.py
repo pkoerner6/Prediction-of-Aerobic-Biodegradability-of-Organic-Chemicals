@@ -30,7 +30,7 @@ parser.add_argument(
 parser.add_argument(
     "--path_to_save",
     type=str,
-    default="biodegradation/dataframes/biodegradation_echa.csv",
+    default="datasets/iuclid_echa.csv",
     help="Give path where to save results",
 )
 parser.add_argument(
@@ -121,7 +121,7 @@ parser.add_argument(
 parser.add_argument(
     "--path_dossiers",
     type=str,
-    default="biodegradation/reach_study_results_2022/reach_study_results_dossiers_09_08_2022",
+    default="reach_study_results/reach_study_results_dossiers_09_08_2022",
     help="Give the path to the downloaded REACH study results dossiers",
 )
 args = parser.parse_args()
@@ -491,10 +491,10 @@ def filter_and_turn_excel_to_pickel(excel_dir: str):
 
 def load_data_to_add_info() -> Tuple[pd.DataFrame, pd.DataFrame]:
     if args.pickle_excel:
-        filter_and_turn_excel_to_pickel("biodegradation/reach_study_results_2022/RegisteredSubstances_organic6")
-    reg_substances = pd.read_pickle("biodegradation/reach_study_results_2022/RegisteredSubstances_organic6.pkl")
+        filter_and_turn_excel_to_pickel("reach_study_results/RegisteredSubstances_organic6")
+    reg_substances = pd.read_pickle("reach_study_results/RegisteredSubstances_organic6.pkl")
     mixtures = pd.read_csv(
-        "biodegradation/reach_study_results_2022/Mixtures_SubsID.csv",
+        "reach_study_results/Mixtures_SubsID.csv",
         engine="python",
         sep=";",
     )
@@ -921,11 +921,9 @@ def convert_reaction_time_to_days(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def additionality_to_paper(df_echa: pd.DataFrame) -> None:
-    echem_downloaded = pd.read_csv("biodegradation/dataframes/eChem_downloaded.csv", index_col=0)
-    echem_downloaded = echem_downloaded[echem_downloaded["Number type"] == "CAS Number"]
 
     def load_regression_df() -> pd.DataFrame:
-        df_regression = pd.read_excel("biodegradation/datasets/Huang_Zhang_RegressionDataset.xlsx", index_col=0)
+        df_regression = pd.read_excel("datasets/Huang_Zhang_RegressionDataset.xlsx", index_col=0)
         df_regression.rename(
             columns={
                 "Substance Name": "name",
@@ -953,16 +951,8 @@ def additionality_to_paper(df_echa: pd.DataFrame) -> None:
         "Unique new cas in echa data and not in regression dataset: ",
         new_cas=df_echa_not_in_regression["cas"].nunique(),
     )
-    log.info("Data points in echem_downloaded: ", echem_entries=len(echem_downloaded))
-    log.info("Unique cas in echem_downloaded: ", echem_cas=echem_downloaded["Number"].nunique())
-    df_echa_not_in_echem_downloaded = df_echa[~df_echa["cas"].isin(echem_downloaded["Number"])]
-    log.info("New Echa data not in regression dataset: ", new_data_echem=len(df_echa_not_in_echem_downloaded))
-    log.info(
-        "New cas in echa data not in regression dataset: ",
-        new_cas_echem=df_echa_not_in_echem_downloaded["cas"].nunique(),
-    )
     df_echa_not_in_regression.reset_index(inplace=True, drop=True)
-    df_echa_not_in_regression.to_csv("biodegradation/dataframes/biodegradation_echa_data_not_in_regression.csv")
+    df_echa_not_in_regression.to_csv("datasets/biodegradation_echa_data_not_in_regression.csv")
 
 
 def process_echa_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -979,6 +969,10 @@ def process_echa_data(df: pd.DataFrame) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
+    if args.unzip:
+        log.info("Unzipping")
+        unzip_i6z_files(path=args.path_dossiers)
+        
     directory_to_folders = args.path_dossiers + "_unzipped"
     dir_list = os.listdir(directory_to_folders)
     dir_list = [x for x in dir_list if "." not in x]  # to eliminate files called ".DS_Store"
@@ -989,10 +983,6 @@ if __name__ == "__main__":
         "study_record": f"http://iuclid6.echa.europa.eu/namespaces/ENDPOINT_STUDY_RECORD-{args.subtype}/7.0",
         "xsl": "http://www.w3.org/1999/XSL/Transform",
     }
-
-    if args.unzip:
-        log.info("Unzipping")
-        unzip_i6z_files(path=args.path_dossiers)
 
     log.info("Getting information for all files")
     df = get_values_for_dir_list(

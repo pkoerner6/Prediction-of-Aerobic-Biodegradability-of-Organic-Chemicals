@@ -6,7 +6,7 @@ import sys
 import os
 
 log = structlog.get_logger()
-from typing import List, Tuple
+from typing import List, Dict, Tuple
 import matplotlib.pyplot as plt
 
 from sklearn.model_selection import train_test_split
@@ -14,28 +14,48 @@ from lazypredict.Supervised import LazyClassifier, LazyRegressor
 from sklearn.utils import all_estimators
 from sklearn.base import RegressorMixin
 import lightgbm as lgbm
-from xgboost import XGBRegressor
+from xgboost import XGBRegressor, XGBClassifier
+from sklearn.ensemble import ExtraTreesClassifier
+from sklearn.ensemble import RandomForestClassifier
+np.int = int  # Because of scikit-optimize
+from skopt.space import Real, Categorical, Integer
+from skopt import BayesSearchCV
+from skopt.callbacks import DeadlineStopper, DeltaYStopper
+from imblearn.over_sampling import ADASYN
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import (
+    make_scorer,
+    accuracy_score,
+    f1_score,
+    recall_score,
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score,
+)
 
 parser = argparse.ArgumentParser()
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from biodegradation.processing_functions import create_input_regression
-from biodegradation.processing_functions import create_input_classification
-from biodegradation.ml_functions import tune_and_train_XGBRegressor
-from biodegradation.ml_functions import tune_and_train_XGBClassifier
-from biodegradation.ml_functions import split_regression_df_with_grouping
-from biodegradation.ml_functions import get_balanced_data_adasyn
-from biodegradation.ml_functions import tune_and_train_HistGradientBoostingRegressor
-from biodegradation.ml_functions import tune_and_train_RandomForestRegressor
-from biodegradation.ml_functions import tune_and_train_SVR
-from biodegradation.ml_functions import tune_and_train_LGBMRegressor
-from biodegradation.ml_functions import tune_and_train_LGBMClassifier
-from biodegradation.ml_functions import tune_and_train_ExtraTreesClassifier
-from biodegradation.ml_functions import tune_and_train_RandomForestClassifier
-from biodegradation.ml_functions import tune_and_train_BaggingClassifier
+from processing_functions import create_input_regression
+from processing_functions import create_input_classification
+from processing_functions import bit_vec_to_lst_of_lst
+# from ml_functions import tune_and_train_XGBRegressor
+# from ml_functions import tune_and_train_XGBClassifier
+from ml_functions import split_regression_df_with_grouping
+from ml_functions import get_balanced_data_adasyn
+from ml_functions import report_perf_hyperparameter_tuning
+from ml_functions import get_class_results
+# from ml_functions import tune_and_train_HistGradientBoostingRegressor
+# from ml_functions import tune_and_train_RandomForestRegressor
+# from ml_functions import tune_and_train_SVR
+# from ml_functions import tune_and_train_LGBMRegressor
+# from ml_functions import tune_and_train_LGBMClassifier
+# from ml_functions import tune_and_train_ExtraTreesClassifier
+# from ml_functions import tune_and_train_RandomForestClassifier
+# from ml_functions import tune_and_train_BaggingClassifier
 
-from biodegradation.model_results import results_lazy_classifiers_nsplit5_seed42
-from biodegradation.model_results import results_lazy_regressors_nsplit5_seed42
+from model_results import results_lazy_classifiers_nsplit5_seed42
+from model_results import results_lazy_regressors_nsplit5_seed42
 
 
 parser = argparse.ArgumentParser()
@@ -89,10 +109,10 @@ args = parser.parse_args()
 
 def get_improved_datasets() -> Tuple[pd.DataFrame, pd.DataFrame]:
     df_reg_improved = pd.read_csv(
-        "biodegradation/dataframes/improved_data/reg_improved_env_biowin_both_readded.csv", index_col=0
+        "datasets/curated_data/reg_curated_scs_biowin_readded.csv", index_col=0
     )
     df_class_improved = pd.read_csv(
-        "biodegradation/dataframes/improved_data/class_improved_env_biowin_both_readded.csv", index_col=0
+        "datasets/curated_data/class_curated_scs_biowin_readded.csv", index_col=0
     )
     return df_class_improved, df_reg_improved
 
@@ -126,14 +146,30 @@ def get_regression_model_input(df: pd.DataFrame) -> Tuple[np.ndarray, pd.Series,
 
 
 def run_lazy_classifier(df_class: pd.DataFrame) -> None:
-    (
-        class_x_balanced,
-        class_y_balanced,
-        class_x_test,
-        class_y_test,
-    ) = get_classification_model_input(df_class)
-    clf = LazyClassifier(predictions=True)
-    models, _ = clf.fit(class_x_balanced, class_x_test, class_y_balanced, class_y_test)
+    # (
+    #     class_x_balanced,
+    #     class_y_balanced,
+    #     class_x_test,
+    #     class_y_test,
+    # ) = get_classification_model_input(df_class)
+
+    train_df = pd.read_csv("datasets/curated_data/class_curated_scs.csv", index_col=0)
+    # train_df = pd.read_csv("datasets/curated_data/class_curated_scs_biowin_readded.csv", index_col=0)
+    test_df = pd.read_csv("datasets/curated_data/class_curated_scs_multiple.csv", index_col=0)
+    train_df = train_df[~train_df["cas"].isin(test_df["cas"])]
+    test_df.reset_index(inplace=True, drop=True)
+    train_df.reset_index(inplace=True, drop=True)
+
+    x_train = create_input_classification(train_df, include_speciation=False)
+    y_train = train_df["y_true"]
+
+    x_test = create_input_classification(test_df, include_speciation=False)
+    y_test = test_df["y_true"]
+
+    x_balanced, y_balanced = get_balanced_data_adasyn(random_seed=args.random_seed, x=x_train, y=y_train)
+
+    clf = LazyClassifier(predictions=True, verbose=0)
+    models, _ = clf.fit(x_balanced, x_test, y_balanced, y_test)
     log.info(models)
 
 
@@ -199,66 +235,249 @@ def run_lazy_regressor(df_reg: pd.DataFrame) -> None:
     log.info(models)
 
 
-def plot_results_classification(all_data: List[np.ndarray], title: str) -> None:
-    all_data = [array * 100 for array in all_data]
+# def plot_results_classification(all_data: List[np.ndarray], title: str) -> None:
+#     all_data = [array * 100 for array in all_data]
 
-    plt.figure(figsize=(10, 5))
-    labels = [
-        "XGBoost",
-        "LGBM",
-        "ExtraTrees",
-        "RandomForest",
-        "Bagging",
-    ]
-    bplot = plt.boxplot(all_data, vert=True, patch_artist=True, labels=labels, meanline=True, showmeans=True)
-    colors = ["pink", "lightblue", "mediumpurple", "lightgreen", "orange"]
-    for patch, color in zip(bplot["boxes"], colors):
-        patch.set_facecolor(color)
+#     plt.figure(figsize=(10, 5))
+#     labels = [
+#         "XGBoost",
+#         "LGBM",
+#         "ExtraTrees",
+#         "RandomForest",
+#         "Bagging",
+#     ]
+#     bplot = plt.boxplot(all_data, vert=True, patch_artist=True, labels=labels, meanline=True, showmeans=True)
+#     colors = ["pink", "lightblue", "mediumpurple", "lightgreen", "orange"]
+#     for patch, color in zip(bplot["boxes"], colors):
+#         patch.set_facecolor(color)
 
-    # plt.title(f"{title} data", fontsize=15)
-    plt.xticks(fontsize=16)
-    plt.yticks(fontsize=16)
-    plt.xlabel("Classifiers", fontsize=18)
-    plt.ylabel("Accuracy (%)", fontsize=18)
-    plt.tight_layout()
-    plt.grid(axis="y")
-    plt.savefig(f"biodegradation/figures/lazy_predict_results_accuracy_classification.png")
-    plt.close()
-
-
-def plot_results_regression(all_data: List[np.ndarray], title: str) -> None:
-    plt.figure(figsize=(10, 5))
-    labels = [
-        "LGBM",
-        "HistGradient-\nBoosting",
-        "RandomForest",
-        "XGBoost",
-        "SVR",
-    ]
-    colors = ["pink", "lightblue", "mediumpurple", "lightgreen", "orange"]
-    bplot = plt.boxplot(all_data, vert=True, patch_artist=True, labels=labels, meanline=True, showmeans=True)
-    for patch, color in zip(bplot["boxes"], colors):
-        patch.set_facecolor(color)
-
-    # plt.title(f"{title} data", fontsize=15)
-    plt.xticks(fontsize=16)
-    plt.yticks(fontsize=16)
-    plt.xlabel("Regressors", fontsize=18)
-    plt.ylabel("$\mathregular{R^{2}}$", fontsize=18)
-    plt.tight_layout()
-    plt.grid(axis="y")
-    plt.savefig(f"biodegradation/figures/lazy_predict_results_R2_regression.png")
-    plt.close()
+#     plt.xticks(fontsize=16)
+#     plt.yticks(fontsize=16)
+#     plt.xlabel("Classifiers", fontsize=18)
+#     plt.ylabel("Accuracy (%)", fontsize=18)
+#     plt.tight_layout()
+#     plt.grid(axis="y")
+#     plt.savefig(f"figures/lazy_predict_results_accuracy_classification.png")
+#     plt.close()
 
 
-def run_and_plot_classifiers(df: pd.DataFrame) -> None:
+# def plot_results_regression(all_data: List[np.ndarray], title: str) -> None:
+#     plt.figure(figsize=(10, 5))
+#     labels = [
+#         "LGBM",
+#         "HistGradient-\nBoosting",
+#         "RandomForest",
+#         "XGBoost",
+#         "SVR",
+#     ]
+#     colors = ["pink", "lightblue", "mediumpurple", "lightgreen", "orange"]
+#     bplot = plt.boxplot(all_data, vert=True, patch_artist=True, labels=labels, meanline=True, showmeans=True)
+#     for patch, color in zip(bplot["boxes"], colors):
+#         patch.set_facecolor(color)
+
+#     plt.xticks(fontsize=16)
+#     plt.yticks(fontsize=16)
+#     plt.xlabel("Regressors", fontsize=18)
+#     plt.ylabel("$\mathregular{R^{2}}$", fontsize=18)
+#     plt.tight_layout()
+#     plt.grid(axis="y")
+#     plt.savefig(f"figures/lazy_predict_results_R2_regression.png")
+#     plt.close()
+
+
+
+
+
+
+
+
+
+
+
+def tune_classifiers(
+    df: pd.DataFrame, 
+    nsplits: int, 
+    df_test: pd.DataFrame, 
+    search_spaces: Dict, 
+    n_jobs: int,
+    model,
+):
+    df_tune = df[~df["inchi_from_smiles"].isin(df_test["inchi_from_smiles"])]
+    df_tune = df_tune[~df_tune["cas"].isin(df_test["cas"])]
+    assert len(df_tune) + len(df_test) == len(df)
+
+    x = create_input_classification(df_tune, include_speciation=False)
+    y = df_tune["y_true"]
+    x, y, = get_balanced_data_adasyn(random_seed=args.random_seed, x=x, y=y)
+
+    scoring = make_scorer(accuracy_score, greater_is_better=True)
+    skf = StratifiedKFold(n_splits=nsplits, shuffle=True, random_state=args.random_seed)
+    cv_strategy = list(skf.split(x, y))
+
+    opt = BayesSearchCV(
+        estimator=model(),
+        search_spaces=search_spaces,
+        scoring=scoring,
+        cv=cv_strategy,
+        n_iter=120,
+        n_points=5,  # number of hyperparameter sets evaluated at the same time
+        n_jobs=n_jobs,
+        return_train_score=True,
+        refit=False,
+        optimizer_kwargs={"base_estimator": "GP"},  # optmizer parameters: use Gaussian Process (GP)
+        random_state=args.random_seed,
+        verbose=0,
+    )
+    overdone_control = DeltaYStopper(delta=0.0001)  # Stop if the gain of the optimization becomes too small
+    time_limit_control = DeadlineStopper(total_time=60 * 60 * 4)
+    best_params = report_perf_hyperparameter_tuning(
+        opt,
+        x,
+        y,
+        callbacks=[overdone_control, time_limit_control],
+    )
+
+    log.info("Best hyperparameters", best_params=best_params)
+    return best_params
+
+def train_classifier_with_best_hyperparamters(
+    df: pd.DataFrame, 
+    df_test: pd.DataFrame, 
+    model,
+):  
+    df_train = df[~df["cas"].isin(df_test["cas"])]
+    df_train = df_train[~df_train["inchi_from_smiles"].isin(df_test["inchi_from_smiles"])]
+
+    assert len(df_train) + len(df_test) == len(df)
+    x = create_input_classification(df_train, include_speciation=False)
+    y = df_train["y_true"]
+    x, y = get_balanced_data_adasyn(random_seed=args.random_seed, x=x, y=y)
+
+    model.fit(x, y)
+
+    x_test = create_input_classification(df_class=df_test, include_speciation=False)
+    prediction = model.predict(x_test)
+
+    accu, f1, sensitivity, specificity = get_class_results(true=df_test["y_true"], pred=prediction)
+    metrics_all = ["accuracy", "sensitivity", "specificity", "f1"]
+    metrics_values_all = [accu, sensitivity, specificity, f1]
+    for metric, metric_values in zip(metrics_all, metrics_values_all):
+        log.info(f"{metric}: ", score="{:.1f}".format(metric_values * 100))
+    
+    return accu, f1, sensitivity, specificity
+
+
+def tune_and_train_classifiers(
+    df: pd.DataFrame, 
+    nsplits: int, 
+    df_test: pd.DataFrame,
+    n_jobs: int,
+    search_spaces: Dict,
+    model,
+):
+    best_params = tune_classifiers(
+        df=df,
+        nsplits=nsplits,
+        df_test=df_test,
+        search_spaces=search_spaces,
+        n_jobs=n_jobs,
+        model=model,
+    )
+
+    accu, f1, sensitivity, specificity = train_classifier_with_best_hyperparamters(
+        df=df,
+        df_test=df_test,
+        # dataset_name=dataset_name,
+        model=model(**best_params),
+    )
+    return accu, f1, sensitivity, specificity
+
+
+def tune_and_train_XGBClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+    model = XGBClassifier
+    search_spaces = {
+        "alpha": Real(1.0, 4.0, "uniform"),
+        "base_score": Real(0.4, 0.60, "uniform"),
+        "booster": Categorical(["gbtree"]),
+        "colsample_bylevel": Real(0.7, 1.0, "uniform"),
+        "colsample_bynode": Real(0.1, 0.5, "uniform"),
+        "colsample_bytree": Real(0.7, 1.0, "uniform"),
+        "gamma": Real(0.001, 0.1, "uniform"),
+        "lambda": Real(0.1, 0.6, "uniform"),
+        "learning_rate": Real(0.01, 0.8, "uniform"),
+        "max_delta_step": Real(2.0, 4.0, "uniform"),
+        "max_depth": Integer(100, 300),
+        "min_child_weight": Real(1.0, 3.0, "uniform"),
+        "n_estimators": Integer(4800, 5400),
+        "num_parallel_tree": Integer(15, 25),
+        "scale_pos_weight": Real(0.5, 3.0, "uniform"),
+        "subsample": Real(0.6, 0.99, "uniform"),
+        "tree_method": Categorical(["exact"]),
+        "validate_parameters": Categorical([True]),
+    }
+    accu, f1, sensitivity, specificity = tune_and_train_classifiers(
+        df=df,
+        nsplits=nsplits,
+        df_test=df_test,
+        n_jobs=1,
+        search_spaces=search_spaces,
+        model=model,
+    )
+    return accu, f1, sensitivity, specificity
+
+def tune_and_train_ExtraTreesClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+    model = ExtraTreesClassifier
+    search_spaces = {
+        "criterion": Categorical(["gini", "entropy", "log_loss"]),
+        "max_depth": Categorical([None]),
+        "max_features": Categorical(["sqrt", "log2", None]),
+        "min_samples_leaf": Integer(1, 10),
+        "min_samples_split": Integer(2, 10),
+        "n_estimators": Integer(1000, 3000),
+        "random_state": Categorical([args.random_seed]),
+    }
+    accu, f1, sensitivity, specificity = tune_and_train_classifiers(
+        df=df,
+        nsplits=nsplits,
+        df_test=df_test,
+        n_jobs=1,
+        search_spaces=search_spaces,
+        model=model,
+    )
+    return accu, f1, sensitivity, specificity
+
+def tune_and_train_RandomForestClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+    model = RandomForestClassifier
+    search_spaces = {
+        "criterion": Categorical(["gini", "entropy", "log_loss"]),
+        "max_features": Categorical(["sqrt", "log2", None]),
+        "min_samples_leaf": Integer(1, 5),
+        "min_samples_split": Integer(2, 5),
+        "n_estimators": Integer(1000, 2500),
+        "random_state": Categorical([args.random_seed]),
+    }
+    accu, f1, sensitivity, specificity = tune_and_train_classifiers(
+        df=df,
+        nsplits=nsplits,
+        df_test=df_test,
+        n_jobs=1,
+        search_spaces=search_spaces,
+        model=model,
+    )
+    return accu, f1, sensitivity, specificity
+
+
+def run_and_plot_classifiers() -> None:
+    # df = pd.read_csv("datasets/curated_data/class_curated_scs.csv", index_col=0)
+    df = pd.read_csv("datasets/curated_data/class_curated_scs_biowin_readded.csv", index_col=0)
+    df_test = pd.read_csv("datasets/curated_data/class_curated_scs_multiple.csv", index_col=0)
 
     classifiers = {
         "XGBClassifier": tune_and_train_XGBClassifier,
-        "LGBMClassifier": tune_and_train_LGBMClassifier,
+        # "LGBMClassifier": tune_and_train_LGBMClassifier,
         "ExtraTreesClassifier": tune_and_train_ExtraTreesClassifier,
         "RandomForestClassifier": tune_and_train_RandomForestClassifier,
-        "BaggingClassifier": tune_and_train_BaggingClassifier,
+        # "BaggingClassifier": tune_and_train_BaggingClassifier,
     }
 
     accuracy_all = []
@@ -271,82 +490,65 @@ def run_and_plot_classifiers(df: pd.DataFrame) -> None:
             log.info(f" \n Currently running the classifier {classifier}")
             accu, f1, sensitivity, specificity = classifiers[classifier](
                 df=df,
-                random_seed=args.random_seed,
                 nsplits=args.nsplits,
-                include_speciation=False,
-                fixed_testset=False,
-                df_smallest=df,
-                dataset_name="improved_final",
-                n_jobs=args.njobs,
+                df_test=df_test,
             )
             accuracy_all.append(np.asarray(accu))
             f1_all.append(np.asarray(f1))
             sensitivity_all.append(np.asarray(sensitivity))
             specificity_all.append(np.asarray(specificity))
-    else:
-        if (args.nsplits == 5) and (args.random_seed == 42):
-            (
-                accuracy_all_saved,
-                f1_all_saved,
-                sensitivity_all_saved,
-                specificity_all_saved,
-            ) = results_lazy_classifiers_nsplit5_seed42()
-            accuracy_all += accuracy_all_saved
-            f1_all += f1_all_saved
-            sensitivity_all += sensitivity_all_saved
-            specificity_all += specificity_all_saved
-    if args.plot:
-        plot_results_classification(accuracy_all, "Accuracy")
-    log.info("Finished plotting")
+    # if args.plot:
+    #     plot_results_classification(accuracy_all, "Accuracy")
+    # log.info("Finished plotting")
 
 
-def run_and_plot_regressors(
-    df: pd.DataFrame,
-) -> None:
-    regressors = {
-        "LGBMRegressor": tune_and_train_LGBMRegressor,
-        "HistGradientBoostingRegressor": tune_and_train_HistGradientBoostingRegressor,
-        "RandomForestRegressor": tune_and_train_RandomForestRegressor,
-        "XGBRegressor": tune_and_train_XGBRegressor,
-        "SVR": tune_and_train_SVR,
-    }
+# def run_and_plot_regressors(
+#     df: pd.DataFrame,
+# ) -> None:
+#     regressors = {
+#         "LGBMRegressor": tune_and_train_LGBMRegressor,
+#         "HistGradientBoostingRegressor": tune_and_train_HistGradientBoostingRegressor,
+#         "RandomForestRegressor": tune_and_train_RandomForestRegressor,
+#         "XGBRegressor": tune_and_train_XGBRegressor,
+#         "SVR": tune_and_train_SVR,
+#     }
 
-    rmse_all = []
-    mae_all = []
-    r2_all = []
-    mse_all = []
+#     rmse_all = []
+#     mae_all = []
+#     r2_all = []
+#     mse_all = []
 
-    if args.train_new:
-        for regressor in regressors:
-            log.info(f" \n Currently running the regressor {regressor}")
-            rmse, mae, r2, mse = regressors[regressor](
-                df=df.copy(),
-                random_seed=args.random_seed,
-                nsplits=args.nsplits,
-                include_speciation=False,
-                fixed_testset=False,
-                df_smallest=df,
-                dataset_name="improved_final",
-                n_jobs=args.njobs,
-            )
-            rmse_all.append(np.asarray(rmse))
-            mae_all.append(np.asarray(mae))
-            r2_all.append(np.asarray(r2))
-            mse_all.append(np.asarray(mse))
-    else:
-        (
-            rmse_all_saved,
-            mae_all_saved,
-            r2_all_saved,
-            mse_all_saved,
-        ) = results_lazy_regressors_nsplit5_seed42()
-        rmse_all += rmse_all_saved
-        mae_all += mae_all_saved
-        r2_all += r2_all_saved
-        mse_all += mse_all_saved
-    if args.plot:
-        plot_results_regression(r2_all, "R2")
-    log.info("Finished plotting")
+#     if args.train_new:
+#         for regressor in regressors:
+#             log.info(f" \n Currently running the regressor {regressor}")
+#             rmse, mae, r2, mse = regressors[regressor](
+#                 df=df.copy(),
+#                 random_seed=args.random_seed,
+#                 nsplits=args.nsplits,
+#                 include_speciation=False,
+#                 fixed_testset=False,
+#                 df_smallest=df,
+#                 dataset_name="improved_final",
+#                 n_jobs=args.njobs,
+#             )
+#             rmse_all.append(np.asarray(rmse))
+#             mae_all.append(np.asarray(mae))
+#             r2_all.append(np.asarray(r2))
+#             mse_all.append(np.asarray(mse))
+#     else:
+#         (
+#             rmse_all_saved,
+#             mae_all_saved,
+#             r2_all_saved,
+#             mse_all_saved,
+#         ) = results_lazy_regressors_nsplit5_seed42()
+#         rmse_all += rmse_all_saved
+#         mae_all += mae_all_saved
+#         r2_all += r2_all_saved
+#         mse_all += mse_all_saved
+#     if args.plot:
+#         plot_results_regression(r2_all, "R2")
+#     log.info("Finished plotting")
 
 
 if __name__ == "__main__":
@@ -356,10 +558,9 @@ if __name__ == "__main__":
     if args.run_lazy:
         if args.mode == "both" or args.mode == "classification":
             run_lazy_classifier(df_class=df_class)
-        if args.mode == "both" or args.mode == "regression":
-            run_lazy_regressor(df_reg=df_reg)
-
+        # if args.mode == "both" or args.mode == "regression":
+        #     run_lazy_regressor(df_reg=df_reg)
     if args.mode == "both" or args.mode == "classification":
-        run_and_plot_classifiers(df=df_class)
-    if args.mode == "both" or args.mode == "regression":
-        run_and_plot_regressors(df=df_reg)
+        run_and_plot_classifiers()
+    # if args.mode == "both" or args.mode == "regression":
+    #     run_and_plot_regressors(df=df_reg)

@@ -32,15 +32,21 @@ from tqdm import tqdm
 tqdm.pandas()
 log = structlog.get_logger()
 
-root = os.path.join(os.path.abspath(""), "biodegradation/MolGpKa")
+root = os.path.join(os.path.abspath(""), "MolGpKa")
 smarts_file = os.path.join(root, "src/utils/smarts_pattern.tsv")
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--run_improved_no_metal",
+    "--run_curated_no_metal",
     default=False,
     type=bool,
-    help="Whether to add pka values to reg_improved_no_metal & reg_improved_no_metal_env_smiles",
+    help="Whether to add pka values to reg_curated_s_no_metal & reg_curated_scs_no_metal",
+)
+parser.add_argument(
+    "--run_iuclid_data",
+    default=False,
+    type=bool,
+    help="Whether to add pka values to iuclid_echa",
 )
 parser.add_argument(
     "--paths_to_dfs_to_run",
@@ -50,7 +56,6 @@ parser.add_argument(
     help="List of paths to dfs to which pka and alpha values should be added",
 )
 args = parser.parse_args()
-
 
 # ----------------------------------------------------------------------------------
 # Code from MolGpKa
@@ -520,29 +525,33 @@ def predict_pKa_for_df(df: pd.DataFrame, smiles_col: str) -> pd.DataFrame:
     return df
 
 
-def load_regression_df_improved_no_metal() -> pd.DataFrame:
-    df_regression = pd.read_csv("biodegradation/dataframes/improved_data/reg_improved_no_metal.csv", index_col=0)
+def load_regression_df_curated_s_no_metal() -> pd.DataFrame:
+    df_regression = pd.read_csv("datasets/curated_data/reg_curated_s_no_metal.csv", index_col=0)
     df_regression = df_regression[
         df_regression["cas"] != "1803551-73-6"
     ]  # Remove because cannot be converted to fingerprint (Explicit valence for atom # 0 F, 2, is greater than permitted)
     return df_regression
 
 
-def load_regression_df_improved_no_metal_env_smiles() -> pd.DataFrame:
+def load_regression_df_curated_scs_no_metal() -> pd.DataFrame:
     df_regression = pd.read_csv(
-        "biodegradation/dataframes/improved_data/reg_improved_no_metal_env_smiles.csv", index_col=0
+        "datasets/curated_data/reg_curated_scs_no_metal.csv", index_col=0
     )
     return df_regression
 
 
 if __name__ == "__main__":
+    if args.run_iuclid_data: 
+        df = pd.read_csv("datasets/iuclid_echa.csv", index_col=0)
+        df_pred = predict_pKa_for_df(df=df, smiles_col="smiles")
+        df_pred.to_csv("datasets/iuclid_echa.csv")
     if args.run_improved_no_metal:
-        df = load_regression_df_improved_no_metal()
+        df = load_regression_df_curated_s_no_metal()
         df_pred = predict_pKa_for_df(df=df, smiles_col="smiles")
-        df_pred.to_csv("biodegradation/dataframes/improved_data/reg_improved_no_metal.csv")
-        df = load_regression_df_improved_no_metal_env_smiles()
+        df_pred.to_csv("datasets/curated_data/reg_curated_s_no_metal.csv")
+        df = load_regression_df_curated_scs_no_metal()
         df_pred = predict_pKa_for_df(df=df, smiles_col="smiles")
-        df_pred.to_csv("biodegradation/dataframes/improved_data/reg_improved_no_metal_env_smiles.csv")
+        df_pred.to_csv("datasets/curated_data/reg_curated_scs_no_metal.csv")
 
     for df_path in args.paths_to_dfs_to_run:
         df = pd.read_csv(df_path, index_col=0)

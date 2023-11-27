@@ -17,23 +17,23 @@ tqdm.pandas()
 import argparse
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from biodegradation.processing_functions import further_processing_of_echa_data
-from biodegradation.processing_functions import get_df_with_unique_cas
-from biodegradation.processing_functions import remove_organo_metals_function
-from biodegradation.processing_functions import get_smiles_from_cas_pubchempy
-from biodegradation.processing_functions import get_smiles_from_cas_comptox
-from biodegradation.processing_functions import get_info_cas_common_chemistry
-from biodegradation.processing_functions import replace_smiles_with_env_relevant_smiles
-from biodegradation.processing_functions import replace_multiple_cas_for_one_inchi
-from biodegradation.processing_functions import load_regression_df
-from biodegradation.processing_functions import load_checked_organics6
-from biodegradation.processing_functions import check_number_of_components
-from biodegradation.processing_functions import openbabel_convert_smiles_to_inchi_with_nans
-from biodegradation.processing_functions import get_inchi_main_layer
-from biodegradation.processing_functions import get_smiles_inchi_cirpy
-from biodegradation.processing_functions import openbabel_convert
-from biodegradation.processing_functions import remove_smiles_with_incorrect_format
-from biodegradation.processing_functions import get_speciation_col_names
+from processing_functions import further_processing_of_echa_data
+from processing_functions import get_df_with_unique_cas
+from processing_functions import remove_organo_metals_function
+from processing_functions import get_smiles_from_cas_pubchempy
+from processing_functions import get_smiles_from_cas_comptox
+from processing_functions import get_info_cas_common_chemistry
+from processing_functions import replace_smiles_with_env_relevant_smiles
+from processing_functions import replace_multiple_cas_for_one_inchi
+from processing_functions import load_regression_df
+from processing_functions import load_checked_organics6
+from processing_functions import check_number_of_components
+from processing_functions import openbabel_convert_smiles_to_inchi_with_nans
+from processing_functions import get_inchi_main_layer
+from processing_functions import get_smiles_inchi_cirpy
+from processing_functions import openbabel_convert
+from processing_functions import remove_smiles_with_incorrect_format
+from processing_functions import get_speciation_col_names
 
 
 parser = argparse.ArgumentParser()
@@ -117,7 +117,7 @@ def get_df_a_and_b(
 
 
 def get_problematic_studies_echa() -> pd.DataFrame:
-    df_echa = pd.read_csv("biodegradation/dataframes/biodegradation_echa.csv", index_col=0)
+    df_echa = pd.read_csv("datasets/iuclid_echa.csv", index_col=0)
     df_echa = further_processing_of_echa_data(df_echa)
     log.info("Studies retrieved from ECHA with iuclid after processing", studies=len(df_echa))
     df_echa = df_echa.astype({"inventory_num": str, "ref_inventory_num": str, "cas": str, "ref_cas": str})
@@ -209,8 +209,8 @@ def process_one_component_data(
 
     if new_cas_common_chemistry:
         df_b[["smiles_from_ccc", "inchi_from_ccc"]] = df_b.progress_apply(func=get_smiles_inchi_from_ccc, axis=1)
-        df_b.to_csv(f"biodegradation/dataframes/df_one_component_ccc.csv")
-    df_b = pd.read_csv(f"biodegradation/dataframes/df_one_component_ccc.csv", index_col=0)
+        df_b.to_csv(f"datasets/data_processing/df_one_component_ccc.csv")
+    df_b = pd.read_csv(f"datasets/data_processing/df_one_component_ccc.csv", index_col=0)
     df_smiles_found = df_b[df_b["smiles_from_ccc"].notnull()].copy()
     df_smiles_not_found = df_b[df_b["smiles_from_ccc"].isnull()].copy()
     assert len(df_smiles_found) + len(df_smiles_not_found) == len(df_b)
@@ -238,17 +238,17 @@ def process_multiple_component_data(
 
     if new_pubchem:
         df_pubchem = get_smiles_from_cas_pubchempy(df_multiple_components)
-        df_pubchem.to_csv("biodegradation/dataframes/df_smiles_multiple_component_pubchem_no_metals.csv")
+        df_pubchem.to_csv("datasets/data_processing/df_smiles_multiple_component_pubchem_no_metals.csv")
     df_pubchem = pd.read_csv(
-        "biodegradation/dataframes/df_smiles_multiple_component_pubchem_no_metals.csv",
+        "datasets/data_processing/df_smiles_multiple_component_pubchem_no_metals.csv",
         index_col=0,
     )
     assert len(df_multiple_components) == len(df_pubchem)
 
     if new_comptox:
         df_comptox = get_smiles_from_cas_comptox(df=df_pubchem)
-        df_comptox.to_csv("biodegradation/dataframes/comptox_no_metals.csv")
-    df_multiple = pd.read_csv("biodegradation/dataframes/comptox_no_metals.csv", index_col=0)
+        df_comptox.to_csv("datasets/data_processing/comptox_no_metals.csv")
+    df_multiple = pd.read_csv("datasets/data_processing/comptox_no_metals.csv", index_col=0)
 
     assert len(df_multiple_components) == len(df_multiple)
 
@@ -358,11 +358,11 @@ def process_multiple_components_smiles_not_found(
             func=add_cirpy_info, axis=1
         )
         df_smiles_not_found.to_csv(
-            f"biodegradation/dataframes/df_multiple_components_smiles_not_found_ccc_cirpy_no_metals.csv"
+            f"datasets/data_processing/df_multiple_components_smiles_not_found_ccc_cirpy_no_metals.csv"
         )
     len_old_df_smiles_not_found = len(df_smiles_not_found)
     df_smiles_not_found = pd.read_csv(
-        f"biodegradation/dataframes/df_multiple_components_smiles_not_found_ccc_cirpy_no_metals.csv", index_col=0
+        f"datasets/data_processing/df_multiple_components_smiles_not_found_ccc_cirpy_no_metals.csv", index_col=0
     )
     if len(df_smiles_not_found) != len_old_df_smiles_not_found:
         log.fatal("Need to run new cirpy!!")
@@ -443,7 +443,7 @@ def get_full_df_b(
     df_multiple_components_smiles_not_found = df_multiple_components_smiles_not_found.drop(
         ["inchi_from_ccc", "inchi_pubchem", "inchi_comptox", "inchi_from_cas_cirpy"], axis=1
     ).reset_index(drop=True)
-    df_multiple_components_smiles_not_found.to_csv("biodegradation/dataframes/substances_with_no_confirmed_smiles.csv")
+    df_multiple_components_smiles_not_found.to_csv("datasets/data_processing/substances_with_no_confirmed_smiles.csv")
     df_smiles_not_found_full = df_b_full_original[
         df_b_full_original["cas"].isin(list(df_multiple_components_smiles_not_found["cas"]))
     ]
@@ -687,5 +687,5 @@ if __name__ == "__main__":
     for df_name, df in dfs.items():
         log.info(f"Entries in {df_name}", entries=len(df))
 
-    df_full_agg.to_csv("biodegradation/dataframes/improved_data/reg_improved_no_metal.csv")
-    df_full_with_env_smiles_agg.to_csv("biodegradation/dataframes/improved_data/reg_improved_no_metal_env_smiles.csv")
+    df_full_agg.to_csv("datasets/data_processing/reg_curated_s_no_metal.csv")
+    df_full_with_env_smiles_agg.to_csv("datasets/data_processing/reg_curated_scs_no_metal.csv")

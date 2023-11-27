@@ -3,6 +3,7 @@ import numpy as np
 import structlog
 import sys
 import os
+import pickle
 from typing import List, Dict, Tuple
 import matplotlib.pyplot as plt
 from time import time
@@ -39,11 +40,12 @@ log = structlog.get_logger()
 
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from biodegradation.processing_functions import create_input_classification
-from biodegradation.processing_functions import create_input_regression
-from biodegradation.processing_functions import get_speciation_col_names
-from biodegradation.processing_functions import openbabel_convert
-from biodegradation.processing_functions import remove_smiles_with_incorrect_format
+from processing_functions import create_input_classification
+from processing_functions import create_input_regression
+from processing_functions import get_speciation_col_names
+from processing_functions import openbabel_convert
+from processing_functions import remove_smiles_with_incorrect_format
+from processing_functions import get_inchi_main_layer
 
 
 def get_class_results(true: np.ndarray, pred: np.ndarray) -> Tuple[float, float, float, float]:
@@ -89,10 +91,13 @@ def split_classification_df_with_fixed_test_set(
     skf = StratifiedKFold(n_splits=nsplits, shuffle=True, random_state=random_seed)
     for _, test_index in skf.split(df_smallest[cols + ["inchi_from_smiles"]], df_smallest["y_true"]):
         df_test = df_smallest[df_smallest.index.isin(test_index)]
-        inchi_for_test = list(
-            df_test["inchi_from_smiles"]
-        )  # inchi works best but not ideal because not all substances from test set can be found in df_paper
-        train_set = df[~df["inchi_from_smiles"].isin(inchi_for_test)]
+        train_set = df[~df["inchi_from_smiles"].isin(df_test["inchi_from_smiles"])]
+        if len(df_test) > len(df)-len(train_set):
+            df_test = get_inchi_main_layer(df=df_test, inchi_col="inchi_from_smiles", layers=3)
+            df_train = get_inchi_main_layer(df=df, inchi_col="inchi_from_smiles", layers=3)
+            train_set = df_train[~df_train["inchi_from_smiles_main_layer"].isin(df_test["inchi_from_smiles_main_layer"])]
+            train_set = train_set[~train_set["cas"].isin(df_test["cas"])]
+        print("Test: ", len(df_test), " df - train: ", len(df)-len(train_set))
         train_sets.append(train_set)
         test_sets.append(df_test)
 
@@ -728,7 +733,7 @@ def tune_classifiers(
     x = create_input_classification(df, include_speciation)
     y = df["y_true"]
 
-    x, y, get_balanced_data_adasyn(random_seed=random_seed, x=x, y=y)
+    x, y = get_balanced_data_adasyn(random_seed=random_seed, x=x, y=y)
 
     scoring = make_scorer(accuracy_score, greater_is_better=True)
     skf = StratifiedKFold(n_splits=nsplits, shuffle=True, random_state=random_seed)
@@ -1308,7 +1313,7 @@ def plot_regression_error(
         plt.title(f"{figure_title}", fontsize=18)
     plt.legend([(r"R$^2$" + f"= {'%.2f' % r2}"), "identity"], prop={"size": 16}, loc="upper left")
     plt.tight_layout()
-    plt.savefig(f"biodegradation/figures/regression_prediction_error_{figure_name}.png")
+    plt.savefig(f"figures/regression_prediction_error_{figure_name}.png")
     plt.close()
 
 
@@ -1366,5 +1371,31 @@ def plot_classification_bar(
     )
     for bars in ax.containers:
         ax.bar_label(container=bars, label_type="center")
-    plt.savefig(f"biodegradation/figures/classification_prediction_error_bar_{figure_name}.png")
+    plt.savefig(f"figures/classification_prediction_error_{figure_name}.png")
     plt.close()
+
+
+
+def get_best_classifier_readded(train_new: bool, random_seed: int) -> Tuple[XGBClassifier, np.ndarray]:
+    file_name = "models/xgbc.pkl"
+
+    df_class_readded = pd.read_csv(
+        "datasets/curated_data/class_curated_scs_biowin_readded.csv", index_col=0
+    )
+    best_params = get_lazy_xgbc_parameters()
+    classifier = XGBClassifier(**best_params)
+
+    x = create_input_classification(df_class_readded, include_speciation=False)
+    y = df_class_readded["y_true"]
+    x, y = get_balanced_data_adasyn(random_seed=random_seed, x=x, y=y)
+
+    if train_new: 
+        log.info("Fitting model")
+        classifier.fit(x, y)
+        log.info("Finished fitting model")
+        pickle.dump(classifier, open(file_name, "wb"))
+
+    else: 
+        classifier = pickle.load(open(file_name, "rb"))
+
+    return classifier, x
