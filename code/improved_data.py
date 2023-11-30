@@ -14,6 +14,7 @@ from xgboost import XGBClassifier
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from processing_functions import get_class_datasets
+from processing_functions import load_class_data_paper
 from processing_functions import get_regression_datasets
 from processing_functions import get_comparison_datasets_regression
 from processing_functions import get_comparison_datasets_classification
@@ -246,8 +247,23 @@ def train_classification_models_test_set_multiple(
     use_adasyn: bool,
 ) -> Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray], List[np.ndarray]]:
 
-    datasets = get_class_datasets()
+    # datasets = get_class_datasets()
+    _, _, df_class = load_class_data_paper()
+    curated_scs = pd.read_csv("datasets/curated_data/class_curated_scs_train.csv", index_col=0)
+    biowin = pd.read_csv("datasets/curated_data/class_curated_scs_biowin_train.csv", index_col=0)
+
+    biowin_readded = pd.read_csv(
+        "datasets/curated_data/class_curated_scs_biowin_readded_train.csv", index_col=0
+    )
+    datasets = {
+        "df_paper": df_class,
+        "df_curated_scs": curated_scs,
+        "df_curated_scs_biowin": biowin,
+        "df_curated_scs_biowin_readded": biowin_readded,
+    }
+
     test_set = pd.read_csv("datasets/curated_data/class_curated_scs_multiple.csv", index_col=0)
+    log.info("test set composition: ", RB=len(test_set[test_set["y_true"] == 1]), NRB=len(test_set[test_set["y_true"] == 0]))
 
     accuracy: List[np.ndarray] = [np.asarray([])] * len(datasets)
     f1: List[np.ndarray] = [np.asarray([])] * len(datasets)
@@ -267,15 +283,24 @@ def train_classification_models_test_set_multiple(
             column_name_input="smiles",
             output_type="inchi",
         )
-        df_test_all = test_set.copy()
-        df_train = dataset[~dataset["cas"].isin(df_test_all["cas"])]
-        df_train = df_train[~df_train["inchi_from_smiles"].isin(df_test_all["inchi_from_smiles"])]
-        if len(df_test_all) > len(dataset)-len(df_train):
-            df_test_all = get_inchi_main_layer(df=df_test_all, inchi_col="inchi_from_smiles", layers=3) 
-            df_train = get_inchi_main_layer(df=df_train, inchi_col="inchi_from_smiles", layers=3)
-            df_train = df_train[~df_train["inchi_from_smiles_main_layer"].isin(df_test_all["inchi_from_smiles_main_layer"])]
-        log.info("Entries train set, test set, dataset before - after removing test set", df_train=len(df_train), df_test=len(df_test_all), before_minus_after=len(dataset)-len(df_train))
-        assert len(df_test_all) <= len(dataset)-len(df_train)
+
+        if dataset_name=="df_paper": 
+            df_test_all = test_set.copy()
+            df_train = dataset[~dataset["cas"].isin(df_test_all["cas"])]
+            df_train = df_train[~df_train["inchi_from_smiles"].isin(df_test_all["inchi_from_smiles"])]
+            if (len(df_test_all) > len(dataset)-len(df_train)):
+                df_test_all = get_inchi_main_layer(df=df_test_all, inchi_col="inchi_from_smiles", layers=3) 
+                df_train = get_inchi_main_layer(df=df_train, inchi_col="inchi_from_smiles", layers=3)
+                df_train = df_train[~df_train["inchi_from_smiles_main_layer"].isin(df_test_all["inchi_from_smiles_main_layer"])]
+            log.info("Entries train set, test set, dataset before - after removing test set", df_train=len(df_train), df_test=len(df_test_all), before_minus_after=len(dataset)-len(df_train))
+            assert len(df_test_all) <= len(dataset)-len(df_train)
+        else: 
+            df_train = dataset.copy()
+            df_test_all = test_set.copy()
+            df_train = df_train[~df_train["inchi_from_smiles"].isin(df_test_all["inchi_from_smiles"])]
+            log.info("Entries train set and test set ", df_train=len(df_train), df_test=len(df_test_all))
+            print(len(df_train[df_train["inchi_from_smiles"].isin(df_test_all["inchi_from_smiles"])]))
+            assert len(df_train[df_train["inchi_from_smiles"].isin(df_test_all["inchi_from_smiles"])]) == 0
 
         model = train_XGBClassifier_Huang_Zhang_on_all_data(df=df_train, random_seed=args.random_seed, use_adasyn=use_adasyn, include_speciation=False)
 
@@ -292,78 +317,85 @@ def train_classification_models_test_set_multiple(
         for metric, metric_values in zip(metrics_all, metrics_values_all):
             log.info(f"{metric}: ", score="{:.1f}".format(np.mean(metric_values) * 100))
 
-    for indx, (dataset_name, dataset) in enumerate(datasets.items()):
-        print("") # TODO
-        log.info(f"Entries in {dataset_name}", entries=len(dataset))
-
-        # remove substances from test set from training set
-        df_smiles_correct = remove_smiles_with_incorrect_format(df=dataset, col_name_smiles="smiles")
-        dataset = openbabel_convert(
-            df=df_smiles_correct,
-            input_type="smiles",
-            column_name_input="smiles",
-            output_type="inchi",
-        )
-        lst_accu: List[float] = []
-        lst_sensitivity: List[float] = []
-        lst_specificity: List[float] = []
-        lst_f1: List[float] = []
-
-        n_splits = args.nsplits 
-
-        skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=args.random_seed)
-        for _, test_index in skf.split(test_set[["cas", "smiles", "inchi_from_smiles"]], test_set["y_true"]):
-            df_test = test_set[test_set.index.isin(test_index)]
-            dataset_train = dataset[~dataset["cas"].isin(df_test["cas"])]
-            dataset_train = dataset_train[~dataset_train["inchi_from_smiles"].isin(df_test["inchi_from_smiles"])]
-            if len(df_test) > len(dataset)-len(dataset_train):
-                df_test = get_inchi_main_layer(df=df_test, inchi_col="inchi_from_smiles", layers=3) # df_test
-                dataset_train = get_inchi_main_layer(df=dataset_train, inchi_col="inchi_from_smiles", layers=3)
-                dataset_train = dataset_train[~dataset_train["inchi_from_smiles_main_layer"].isin(df_test["inchi_from_smiles_main_layer"])]
-            log.info("Entries train set, test set, dataset before - after removing test set", df_train=len(dataset_train), df_test=len(df_test), before_minus_after=len(dataset)-len(dataset_train))
-
-            assert len(df_test) <= len(dataset)-len(dataset_train)
-
-            model = train_XGBClassifier_Huang_Zhang_on_all_data(df=dataset_train, random_seed=args.random_seed, use_adasyn=use_adasyn, include_speciation=False)
-
-            x_test = create_input_classification(df_class=df_test, include_speciation=False)
-            prediction = model.predict(x_test)
-            df_test = df_test.copy()
-            df_test["prediction"] = model.predict(x_test)
-
-            accu, f1_score, sens, speci = get_class_results(true=df_test["y_true"], pred=prediction)
-            
-            lst_accu.append(round(accu, 4))
-            lst_sensitivity.append(round(sens, 4))
-            lst_specificity.append(round(speci, 4))
-            lst_f1.append(round(f1_score, 4))
-
-        average_test_size = round(len(test_set)/n_splits, 1)
-        test_percent = round(((average_test_size) / len(dataset)) * 100, 1)
-        log.info("Test set size", size=average_test_size, percent=f"{test_percent}%")
-
-        metrics = ["accuracy", "sensitivity", "specificity", "f1"]
-        metrics_values = [
-            lst_accu,
-            lst_sensitivity,
-            lst_specificity,
-            lst_f1,
-        ]
-        for metric, metric_values in zip(metrics, metrics_values):
-            log.info(
-                f"{metric}: ",
-                score="{:.1f}".format(np.mean(metric_values) * 100) + " ± " + "{:.1f}".format(np.std(metric_values) * 100),
-            )
-        log.info("Accuracy: ", accuracy=lst_accu)
-        log.info("Sensitivity: ", sensitivity=lst_sensitivity)
-        log.info("Specificity: ", specificity=lst_specificity)
-        log.info("F1: ", f1=lst_f1)
-            
-        accuracy[indx] = np.asarray(lst_accu)
-        f1[indx] = np.asarray([lst_f1])
-        sensitivity[indx] = np.asarray([lst_sensitivity])
-        specificity[indx] = np.asarray([lst_specificity])
+        accuracy[indx] = (np.asarray([accu]))
+        f1[indx] = (np.asarray([f1_score]))
+        sensitivity[indx] = (np.asarray([sens]))
+        specificity[indx] = (np.asarray([speci]))
     return accuracy, f1, sensitivity, specificity
+
+
+    # for indx, (dataset_name, dataset) in enumerate(datasets.items()):
+    #     print("") # TODO
+    #     log.info(f"Entries in {dataset_name}", entries=len(dataset))
+
+    #     # remove substances from test set from training set
+    #     df_smiles_correct = remove_smiles_with_incorrect_format(df=dataset, col_name_smiles="smiles")
+    #     dataset = openbabel_convert(
+    #         df=df_smiles_correct,
+    #         input_type="smiles",
+    #         column_name_input="smiles",
+    #         output_type="inchi",
+    #     )
+    #     lst_accu: List[float] = []
+    #     lst_sensitivity: List[float] = []
+    #     lst_specificity: List[float] = []
+    #     lst_f1: List[float] = []
+
+    #     n_splits = args.nsplits 
+
+    #     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=args.random_seed)
+    #     for _, test_index in skf.split(test_set[["cas", "smiles", "inchi_from_smiles"]], test_set["y_true"]):
+    #         df_test = test_set[test_set.index.isin(test_index)]
+    #         dataset_train = dataset[~dataset["cas"].isin(df_test["cas"])]
+    #         dataset_train = dataset_train[~dataset_train["inchi_from_smiles"].isin(df_test["inchi_from_smiles"])]
+    #         if len(df_test) > len(dataset)-len(dataset_train):
+    #             df_test = get_inchi_main_layer(df=df_test, inchi_col="inchi_from_smiles", layers=3) # df_test
+    #             dataset_train = get_inchi_main_layer(df=dataset_train, inchi_col="inchi_from_smiles", layers=3)
+    #             dataset_train = dataset_train[~dataset_train["inchi_from_smiles_main_layer"].isin(df_test["inchi_from_smiles_main_layer"])]
+    #         log.info("Entries train set, test set, dataset before - after removing test set", df_train=len(dataset_train), df_test=len(df_test), before_minus_after=len(dataset)-len(dataset_train))
+
+    #         assert len(df_test) <= len(dataset)-len(dataset_train)
+
+    #         model = train_XGBClassifier_Huang_Zhang_on_all_data(df=dataset_train, random_seed=args.random_seed, use_adasyn=use_adasyn, include_speciation=False)
+
+    #         x_test = create_input_classification(df_class=df_test, include_speciation=False)
+    #         prediction = model.predict(x_test)
+    #         df_test = df_test.copy()
+    #         df_test["prediction"] = model.predict(x_test)
+
+    #         accu, f1_score, sens, speci = get_class_results(true=df_test["y_true"], pred=prediction)
+            
+    #         lst_accu.append(round(accu, 4))
+    #         lst_sensitivity.append(round(sens, 4))
+    #         lst_specificity.append(round(speci, 4))
+    #         lst_f1.append(round(f1_score, 4))
+
+    #     average_test_size = round(len(test_set)/n_splits, 1)
+    #     test_percent = round(((average_test_size) / len(dataset)) * 100, 1)
+    #     log.info("Test set size", size=average_test_size, percent=f"{test_percent}%")
+
+    #     metrics = ["accuracy", "sensitivity", "specificity", "f1"]
+    #     metrics_values = [
+    #         lst_accu,
+    #         lst_sensitivity,
+    #         lst_specificity,
+    #         lst_f1,
+    #     ]
+    #     for metric, metric_values in zip(metrics, metrics_values):
+    #         log.info(
+    #             f"{metric}: ",
+    #             score="{:.1f}".format(np.mean(metric_values) * 100) + " ± " + "{:.1f}".format(np.std(metric_values) * 100),
+    #         )
+    #     log.info("Accuracy: ", accuracy=lst_accu)
+    #     log.info("Sensitivity: ", sensitivity=lst_sensitivity)
+    #     log.info("Specificity: ", specificity=lst_specificity)
+    #     log.info("F1: ", f1=lst_f1)
+            
+    #     accuracy[indx] = np.asarray(lst_accu)
+    #     f1[indx] = np.asarray([lst_f1])
+    #     sensitivity[indx] = np.asarray([lst_sensitivity])
+    #     specificity[indx] = np.asarray([lst_specificity])
+    # return accuracy, f1, sensitivity, specificity
 
 
 def get_labels_colors_progress() -> Tuple[List[str], List[str]]:
@@ -396,14 +428,14 @@ def run_paper_progress(mode: str) -> None:
         r2 = [np.array([0.54])] + r2  # reproted R2 from Huang and Zhang
         title_to_data = {"RMSE": rmse[0:8], "MAE": mae[0:8], "$\mathregular{R^{2}}$": r2[0:8]}
     elif mode == "classification":
-        # accuracy, f1, sensitivity, specificity = train_classification_models(
-        #     comparison_or_progress="progress",
-        #     with_lunghini=True,
-        #     use_adasyn=True,
-        # )
-        accuracy, f1, sensitivity, specificity = train_classification_models_test_set_multiple(
+        accuracy, f1, sensitivity, specificity = train_classification_models(
+            comparison_or_progress="progress",
+            with_lunghini=True,
             use_adasyn=True,
         )
+        # accuracy, f1, sensitivity, specificity = train_classification_models_test_set_multiple(
+        #     use_adasyn=True,
+        # ) # TODO
     
         accuracy = [np.array([0.851])] + accuracy  # reported accuracy from Huang and Zhang
         # accuracy.insert(2, np.array([0.876]))  # reported accuracy with chemical speciation from Huang and Zhang
@@ -428,7 +460,7 @@ def run_paper_progress(mode: str) -> None:
             continue
         if title == "Accuracy":
             data = [array * 100 for array in data]
-        # plot_results( #plot_results_with_stanard_deviation(
+        # plot_results( 
         #     all_data=data,
         #     labels=labels,
         #     colors=colors,
@@ -436,17 +468,17 @@ def run_paper_progress(mode: str) -> None:
         #     seed=args.random_seed,
         #     save_ending="progress",
         # )
-        plot_results_with_stanard_deviation(
-            all_data=data,
-            labels=labels,
-            colors=colors,
-            nsplits=args.nsplits,
-            title=title,
-            mode=mode,
-            seed=args.random_seed,
-            plot_with_paper=True,
-            save_ending="progress",
-        )
+        # plot_results_with_stanard_deviation(
+        #     all_data=data,
+        #     labels=labels,
+        #     colors=colors,
+        #     nsplits=args.nsplits,
+        #     title=title,
+        #     mode=mode,
+        #     seed=args.random_seed,
+        #     plot_with_paper=True,
+        #     save_ending="progress",
+        # )
 
 
 if __name__ == "__main__":

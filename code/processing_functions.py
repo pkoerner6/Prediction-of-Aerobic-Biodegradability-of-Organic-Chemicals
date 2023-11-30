@@ -1094,7 +1094,7 @@ def create_classification_data_based_on_regression_data(
     include_speciation: bool, 
     env_smiles_lunghini: bool, 
     prnt: bool
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:  # reg_df MUST be without speciation for it to work propperly
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:  # reg_df MUST be without speciation for it to work propperly
     df_included = reg_df_remove_studies_not_to_consider(reg_df)
     df_labelled = label_data_based_on_percentage(df_included)
     # df_labelled = dixons_q_outlier_detection_removal_huang_zhang(df_labelled)
@@ -1103,6 +1103,11 @@ def create_classification_data_based_on_regression_data(
     if include_speciation:
         columns += get_speciation_col_names()
     df_class = pd.DataFrame(data=df_labelled.copy(), columns=columns)
+
+    df_multiples, df_singles, df_removed_due_to_variance = assign_group_label_and_drop_replicates(
+        df=df_class, by_column="inchi_from_smiles"
+    )
+    assert len(df_multiples) + len(df_singles) + df_removed_due_to_variance["inchi_from_smiles"].nunique() == df_class["inchi_from_smiles"].nunique()
 
     if with_lunghini:
         df_lunghini_additional = get_external_dataset_lunghini(
@@ -1113,23 +1118,23 @@ def create_classification_data_based_on_regression_data(
         if env_smiles_lunghini:
             df_lunghini_additional, _ = replace_smiles_with_env_relevant_smiles(df_without_env_smiles=df_lunghini_additional)
         df_lunghini_additional = df_lunghini_additional[df_lunghini_additional["smiles"].notna()]
-        df_class = pd.concat([df_class, df_lunghini_additional], axis=0)
-        df_class.reset_index(inplace=True, drop=True)
+        df_singles = pd.concat([df_singles, df_lunghini_additional], axis=0)
+        df_singles.reset_index(inplace=True, drop=True)
 
-    df_class = replace_multiple_cas_for_one_inchi(df=df_class, prnt=prnt)
 
-    df_multiples, df_singles, df_removed_due_to_variance = assign_group_label_and_drop_replicates(
-        df=df_class, by_column="inchi_from_smiles"
-    )
-    assert len(df_multiples) + len(df_singles) + df_removed_due_to_variance["inchi_from_smiles"].nunique() == df_class["inchi_from_smiles"].nunique()
+    # df_multiples, df_singles, df_removed_due_to_variance = assign_group_label_and_drop_replicates(
+    #     df=df_class, by_column="inchi_from_smiles"
+    # )
+    # assert len(df_multiples) + len(df_singles) + df_removed_due_to_variance["inchi_from_smiles"].nunique() == df_class["inchi_from_smiles"].nunique()
 
     df_class = pd.concat([df_multiples, df_singles], axis=0) # Here we just take the labels for the substances with one study result
-    df_class.reset_index(inplace=True, drop=True)
+    df_class = replace_multiple_cas_for_one_inchi(df=df_class, prnt=prnt)
     df_class.drop(["principle", "biodegradation_percent"], axis=1, inplace=True)
+    df_class.reset_index(inplace=True, drop=True)
 
     log.info("Entries in df_class_multiple: ", df_class_multiple=len(df_multiples))
     log.info("Entries in df_removed_due_to_variance: ", df_removed_due_to_variance=len(df_removed_due_to_variance))
-    return df_class, df_multiples, df_removed_due_to_variance
+    return df_class, df_multiples, df_removed_due_to_variance, df_singles
 
 
 def is_unique(s):
@@ -1141,14 +1146,23 @@ def assign_group_label_and_drop_replicates(df: pd.DataFrame, by_column: str) -> 
     counted_duplicates = (
         df.groupby(df[by_column].tolist(), as_index=False).size().sort_values(by="size", ascending=False)
     )
+    df_pred = pd.read_csv("datasets/curated_data/class_curated_scs_multiple_test_set_df_curated_scs_biowin_readded_predicted.csv", index_col=0)  # TODO
+    df_pred_disagree = df_pred[df_pred["y_true"] != df_pred["prediction"]]  # TODO
+    print("Model doesn't agree with label: ", len(df_pred_disagree))  # TODO
 
     multiples_lst: List[str] = []
-    # doubles_lst: List[str] = []
+    doubles_lst: List[str] = []
     removed_lst: List[str] = []
     m_df = counted_duplicates[counted_duplicates["size"] > 1]  #tested > 2, and > 1
     multiples = m_df["index"].tolist()
     for substance in multiples:
         current_group = df[df[by_column] == substance] 
+
+        # if substance in df_pred_disagree["inchi_from_smiles"].values: # TODO
+        #     curr_df_pred = df_pred_disagree[df_pred_disagree["inchi_from_smiles"] == substance]
+        #     print("CASRN: ", curr_df_pred["cas"].values)
+        #     print(current_group.head(10))
+
         if is_unique(current_group["y_true"]):
             multiples_lst.append(substance)
         else: 
@@ -1170,22 +1184,24 @@ def assign_group_label_and_drop_replicates(df: pd.DataFrame, by_column: str) -> 
     df_multiple = df[df[by_column].isin(multiples_lst)].copy()
     df_multiple.drop_duplicates(subset=[by_column], inplace=True, ignore_index=True)
     df_multiple.reset_index(inplace=True, drop=True)
-    # df_double = df[df[by_column].isin(doubles_lst)].copy()
-    # df_double.drop_duplicates(subset=[by_column], inplace=True, ignore_index=True)
-    # singles_df = pd.concat([df_double, singles_df], axis=0)
+
+    df_double = df[df[by_column].isin(doubles_lst)].copy()
+    df_double.drop_duplicates(subset=[by_column], inplace=True, ignore_index=True)
+    singles_df = pd.concat([df_double, singles_df], axis=0)
 
     return df_multiple, singles_df, df_removed_due_to_variance
 
 
 def reg_df_remove_studies_not_to_consider(df: pd.DataFrame) -> pd.DataFrame:
     # df = df[ # TODO
+    #     ((df['reliability']==1)) & 
     #     ((df['time_day']==28.0) & (df["endpoint"]=="ready")) |
     #     ((df['time_day']>28.0) & (df["biodegradation_percent"]<0.7) & (df["principle"]=="DOC Die Away")) | 
     #     ((df['time_day']>28.0) & (df["biodegradation_percent"]<0.6) & (df["principle"]!="DOC Die Away")) | 
     #     ((df['time_day']<28.0) & (df["endpoint"]=="ready") & (df["biodegradation_percent"]>0.7) & (df["principle"]=="DOC Die Away")) | 
     #     ((df['time_day']<28.0) & (df["endpoint"]=="ready") & (df["biodegradation_percent"]>0.6) & (df["principle"]!="DOC Die Away"))
     #     ]
-    df = df[(df['time_day']==28.0) & (df["endpoint"]=="ready")]
+    df = df[(df['time_day']==28.0) & (df["endpoint"]=="ready")] # & (df["reliability"]==1)
     df.reset_index(inplace=True, drop=True)
     return df
 
@@ -1195,12 +1211,18 @@ def create_classification_data_based_on_regression_data_adapted(
     with_lunghini: bool, 
     env_smiles: bool, 
     prnt: bool
-) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:  # reg_df MUST be without speciation for it to work propperly
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:  # reg_df MUST be without speciation for it to work propperly
     df_to_consider = reg_df_remove_studies_not_to_consider(reg_df)
     df = label_data_based_on_percentage(df_to_consider)
 
     columns = ["cas", "smiles", "principle", "biodegradation_percent", "y_true", "inchi_from_smiles"]
     df_class = pd.DataFrame(data=df.copy(), columns=columns)
+
+    df_class_multiple, df_singles, df_removed_due_to_variance = assign_group_label_and_drop_replicates(
+        df=df_class, by_column="inchi_from_smiles"
+    )
+    df_class_multiple.drop(["principle", "biodegradation_percent"], axis=1, inplace=True)
+    df_singles.drop(["principle", "biodegradation_percent"], axis=1, inplace=True)
 
     if with_lunghini:
         df_lunghini_additional = get_external_dataset_lunghini(
@@ -1211,15 +1233,14 @@ def create_classification_data_based_on_regression_data_adapted(
         if env_smiles:
             df_lunghini_additional, _ = replace_smiles_with_env_relevant_smiles(df_without_env_smiles=df_lunghini_additional)
         df_lunghini_additional = df_lunghini_additional[df_lunghini_additional["smiles"].notna()]
-        df_class = pd.concat([df_class, df_lunghini_additional], axis=0)
-        df_class.reset_index(inplace=True, drop=True)
+        df_singles = pd.concat([df_singles, df_lunghini_additional], axis=0)
+        df_singles.reset_index(inplace=True, drop=True)
 
-    df_class = replace_multiple_cas_for_one_inchi(df=df_class, prnt=prnt)
 
-    df_class_multiple, df_singles, df_removed_due_to_variance = assign_group_label_and_drop_replicates(
-        df=df_class, by_column="inchi_from_smiles"
-    )
-    df_class_multiple.drop(["principle", "biodegradation_percent"], axis=1, inplace=True)
+    # df_class_multiple, df_singles, df_removed_due_to_variance = assign_group_label_and_drop_replicates(
+    #     df=df_class, by_column="inchi_from_smiles"
+    # )
+    # df_class_multiple.drop(["principle", "biodegradation_percent"], axis=1, inplace=True)
 
     df_singles_biowin, df_problematic = process_df_biowin(
         df=df_singles,
@@ -1227,11 +1248,12 @@ def create_classification_data_based_on_regression_data_adapted(
     )
 
     df_class = pd.concat([df_class_multiple, df_singles_biowin], axis=0)
+    df_class = replace_multiple_cas_for_one_inchi(df=df_class, prnt=prnt)
 
     log.info("Entries in df_class_multiple: ", df_class_multiple=len(df_class_multiple))
     log.info("Entries in df_problematic: ", df_problematic=len(df_problematic))
     log.info("Entries in df_removed_due_to_variance: ", df_removed_due_to_variance=len(df_removed_due_to_variance))
-    return df_class, df_problematic, df_removed_due_to_variance, df_class_multiple
+    return df_class, df_problematic, df_removed_due_to_variance, df_class_multiple, df_singles_biowin
 
 
 def create_classification_biowin(

@@ -415,6 +415,26 @@ def tune_and_train_XGBClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.Dat
         "tree_method": Categorical(["exact"]),
         "validate_parameters": Categorical([True]),
     }
+    # Best results:
+    # OrderedDict([
+    # ('alpha', 2.2303118765599415), 
+    # ('base_score', 0.545545148635465), 
+    # ('booster', 'gbtree'), 
+    # ('colsample_bylevel', 0.7947398780461146), 
+    # ('colsample_bynode', 0.3680591793075739), 
+    # ('colsample_bytree', 0.8242355897456615), 
+    # ('gamma', 0.03574220215501526), 
+    # ('lambda', 0.46975211709521025), 
+    # ('learning_rate', 0.2505260157188399), 
+    # ('max_delta_step', 3.2955831766937553), 
+    # ('max_depth', 210), 
+    # ('min_child_weight', 1.2536676367917012), 
+    # ('n_estimators', 4907), 
+    # ('num_parallel_tree', 21), 
+    # ('scale_pos_weight', 0.6947280728431414), 
+    # ('subsample', 0.8600632698356062), 
+    # ('tree_method', 'exact'), 
+    # ('validate_parameters', True)])
     accu, f1, sensitivity, specificity = tune_and_train_classifiers(
         df=df,
         nsplits=nsplits,
@@ -433,9 +453,18 @@ def tune_and_train_ExtraTreesClassifier(df: pd.DataFrame, nsplits: int, df_test:
         "max_features": Categorical(["sqrt", "log2", None]),
         "min_samples_leaf": Integer(1, 10),
         "min_samples_split": Integer(2, 10),
-        "n_estimators": Integer(1000, 3000),
+        "n_estimators": Integer(50, 1000),
         "random_state": Categorical([args.random_seed]),
     }
+    # Best results: 
+    # OrderedDict([
+    # ('criterion', 'log_loss'), 
+    # ('max_depth', None), 
+    # ('max_features', 'sqrt'), 
+    # ('min_samples_leaf', 1), 
+    # ('min_samples_split', 2), 
+    # ('n_estimators', 1000), 
+    # ('random_state', 42)])
     accu, f1, sensitivity, specificity = tune_and_train_classifiers(
         df=df,
         nsplits=nsplits,
@@ -456,6 +485,7 @@ def tune_and_train_RandomForestClassifier(df: pd.DataFrame, nsplits: int, df_tes
         "n_estimators": Integer(1000, 2500),
         "random_state": Categorical([args.random_seed]),
     }
+    # Best results: 
     accu, f1, sensitivity, specificity = tune_and_train_classifiers(
         df=df,
         nsplits=nsplits,
@@ -473,7 +503,7 @@ def run_and_plot_classifiers() -> None:
     df_test = pd.read_csv("datasets/curated_data/class_curated_scs_multiple.csv", index_col=0)
 
     classifiers = {
-        "XGBClassifier": tune_and_train_XGBClassifier,
+        # "XGBClassifier": tune_and_train_XGBClassifier,
         # "LGBMClassifier": tune_and_train_LGBMClassifier,
         "ExtraTreesClassifier": tune_and_train_ExtraTreesClassifier,
         "RandomForestClassifier": tune_and_train_RandomForestClassifier,
