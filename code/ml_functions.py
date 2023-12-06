@@ -64,12 +64,32 @@ def print_class_results(accuracy: float, sensitivity: float, specificity: float,
     return accuracy
 
 
+# def find_old_inchi_paper(df_test: pd.DataFrame) -> List[str]:
+#     df_checked = pd.read_excel("datasets/substances_with_env_smiles.xlsx", index_col=0)
+
+#     old_smiles_to_delete: List[str] = []
+#     for smiles in df_test["smiles"]:
+#         match = df_checked[df_checked["env_smiles"] == smiles]
+
+#         if len(match) < 1:
+#             match2 = df_checked[df_checked["smiles"] == smiles]
+#             if len(match2) < 1:
+#                 continue
+#         else:
+#             smiles_checked = str(match["smiles"].values[0])
+#             env_smiles = str(match["env_smiles"].values[0])
+#             if (smiles_checked != env_smiles):
+#                 old_smiles_to_delete.append(smiles_checked)
+#     return old_smiles_to_delete
+
+
 def split_classification_df_with_fixed_test_set(
     df: pd.DataFrame,
     df_smallest: pd.DataFrame,
     nsplits: int,
     random_seed: int,
     cols: List[str],
+    paper: bool,
 ) -> Tuple[List[pd.DataFrame], List[pd.DataFrame]]:
 
     train_sets: List[pd.DataFrame] = []
@@ -88,16 +108,21 @@ def split_classification_df_with_fixed_test_set(
     df = dfs[0][cols + ["inchi_from_smiles", "y_true"]]
     df_smallest = dfs[1][cols + ["inchi_from_smiles", "y_true"]]
 
+    print("df_smallest: ", len(df_smallest))
     skf = StratifiedKFold(n_splits=nsplits, shuffle=True, random_state=random_seed)
     for _, test_index in skf.split(df_smallest[cols + ["inchi_from_smiles"]], df_smallest["y_true"]):
         df_test = df_smallest[df_smallest.index.isin(test_index)]
         train_set = df[~df["inchi_from_smiles"].isin(df_test["inchi_from_smiles"])]
-        if len(df_test) > len(df)-len(train_set):
+        if paper:
+            # train_set = train_set[~train_set["cas"].isin(df_test["cas"])]
+            # old_smiles_to_delete = find_old_inchi_paper(df_test)
+            # print(len(old_smiles_to_delete))
+            # train_set = train_set[~train_set["smiles"].isin(old_smiles_to_delete)]
             df_test = get_inchi_main_layer(df=df_test, inchi_col="inchi_from_smiles", layers=3)
             df_train = get_inchi_main_layer(df=df, inchi_col="inchi_from_smiles", layers=3)
             train_set = df_train[~df_train["inchi_from_smiles_main_layer"].isin(df_test["inchi_from_smiles_main_layer"])]
             train_set = train_set[~train_set["cas"].isin(df_test["cas"])]
-        print("Test: ", len(df_test), " df - train: ", len(df)-len(train_set))
+        log.info("Test sizes: ", test_set=len(df_test), deleted=len(df)-len(train_set))
         train_sets.append(train_set)
         test_sets.append(df_test)
 
@@ -111,6 +136,7 @@ def skf_class_fixed_testset(
     random_seed: int,
     include_speciation: bool,
     cols: List[str],
+    paper: bool,
 ) -> Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray], List[np.ndarray], List[pd.DataFrame], List[int]]:
     train_sets, test_sets = split_classification_df_with_fixed_test_set(
         df=df,
@@ -118,6 +144,7 @@ def skf_class_fixed_testset(
         nsplits=nsplits,
         random_seed=random_seed,
         cols=cols,
+        paper=paper,
     )
     x_train_fold_lst: List[np.ndarray] = []
     y_train_fold_lst: List[np.ndarray] = []
@@ -217,6 +244,7 @@ def skf_classification(
     if include_speciation:
         cols += get_speciation_col_names()
 
+    paper = True if dataset_name == "df_paper" else False
     if fixed_testset:
         (
             x_train_fold_lst,
@@ -232,6 +260,7 @@ def skf_classification(
             random_seed=random_seed,
             include_speciation=include_speciation,
             cols=cols,
+            paper=paper,
         )
     else:
         (
@@ -775,6 +804,7 @@ def train_classifier_with_best_hyperparamters(
     df_smallest: pd.DataFrame,
     dataset_name: str,
     best_params: Dict,
+    paper: bool, 
     model,
 ):
     accu, sensitivity, specificity, f1 = skf_classification(
@@ -818,7 +848,7 @@ def tune_and_train_classifiers(
         n_jobs=n_jobs,
         model=model,
     )
-
+    paper = True if dataset_name == "df_paper" else False
     accu, f1, sensitivity, specificity = train_classifier_with_best_hyperparamters(
         df=df,
         random_seed=random_seed,
@@ -828,6 +858,7 @@ def tune_and_train_classifiers(
         df_smallest=df_smallest,
         dataset_name=dataset_name,
         best_params=best_params,
+        paper=paper,
         model=model,
     )
     return accu, f1, sensitivity, specificity

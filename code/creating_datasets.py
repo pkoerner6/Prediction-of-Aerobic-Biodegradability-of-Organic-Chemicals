@@ -32,10 +32,9 @@ parser.add_argument(
 args = parser.parse_args()
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from processing_functions import load_regression_df_curated_s_no_metal
 from processing_functions import load_regression_df_curated_scs_no_metal
 from processing_functions import create_classification_data_based_on_regression_data
-from processing_functions import create_classification_data_based_on_regression_data_adapted
+from processing_functions import create_classification_biowin
 from processing_functions import create_input_classification
 from ml_functions import train_XGBClassifier_Huang_Zhang_on_all_data
 
@@ -45,62 +44,56 @@ def create_class_datasets(with_lunghini: bool, include_speciation: bool) -> None
     df_reg_curated_scs = load_regression_df_curated_scs_no_metal()
 
     log.info("Creating curated_scs")
-    curated_scs, curated_scs_multiple, curated_scs_removed, curated_scs_train = create_classification_data_based_on_regression_data(
+    curated_scs, curated_scs_removed = create_classification_data_based_on_regression_data(
         df_reg_curated_scs.copy(),
         with_lunghini=with_lunghini,
-        include_speciation=include_speciation,
         env_smiles_lunghini=True,
         prnt=args.prnt,
     )
 
     log.info("Creating curated_biowin")
-    curated_scs_biowin, curated_scs_biowin_problematic, curated_scs_biowin_removed, curated_scs_biowin_multiple, curated_scs_biowin_train = create_classification_data_based_on_regression_data_adapted(
-        reg_df=df_reg_curated_scs,
+    curated_scs_biowin, curated_scs_biowin_problematic = create_classification_biowin(
+        reg_df=df_reg_curated_scs.copy(),
         with_lunghini=with_lunghini,
-        env_smiles=True,
+        env_smiles_lunghini=True,
         prnt=args.prnt,
     )
 
     curated_scs.to_csv("datasets/curated_data/class_curated_scs.csv")
-    curated_scs_multiple.to_csv("datasets/curated_data/class_curated_scs_multiple.csv")
     curated_scs_removed.to_csv("datasets/curated_data/class_curated_scs_removed.csv")
-    curated_scs_train.to_csv("datasets/curated_data/class_curated_scs_train.csv")
 
     curated_scs_biowin.to_csv("datasets/curated_data/class_curated_scs_biowin.csv")
     curated_scs_biowin_problematic.to_csv("datasets/curated_data/class_curated_scs_biowin_problematic.csv")
-    curated_scs_biowin_removed.to_csv("datasets/curated_data/class_curated_scs_biowin_removed.csv")
-    curated_scs_biowin_multiple.to_csv("datasets/curated_data/class_curated_scs_biowin_multiple.csv")
-    curated_scs_biowin_train.to_csv("datasets/curated_data/class_curated_scs_biowin_train.csv")
 
 
 
 def create_readded_biowin() -> None:
 
     class_biowin = pd.read_csv(
-        "datasets/curated_data/class_curated_scs_biowin_train.csv", index_col=0
+        "datasets/curated_data/class_curated_scs_biowin.csv", index_col=0
     )
     class_biowin_problematic = pd.read_csv(
         "datasets/curated_data/class_curated_scs_biowin_problematic.csv", index_col=0
     )
 
     df_class = class_biowin.copy()
-    df_removed = class_biowin_problematic.copy()
+    df_problematic = class_biowin_problematic.copy()
 
     model_class = train_XGBClassifier_Huang_Zhang_on_all_data(
         df=df_class, random_seed=args.random_seed, use_adasyn=True, include_speciation=False
     )
 
-    x_removed = create_input_classification(df_removed, include_speciation=False)
-    df_removed["prediction_class"] = model_class.predict(x_removed)
-    df_removed.to_csv(
-        "datasets/curated_data/class_curated_scs_biowin_removed_predicted.csv"
+    x_removed = create_input_classification(df_problematic, include_speciation=False)
+    df_problematic["prediction_class"] = model_class.predict(x_removed)
+    df_problematic.to_csv(
+        "datasets/curated_data/class_curated_scs_biowin_problematic_predicted.csv"
     )
 
     log.info(f"Creating class_curated_final")
-    df_removed.astype({"miti_linear_label": "int32", "miti_non_linear_label": "int32"})
+    df_problematic.astype({"miti_linear_label": "int32", "miti_non_linear_label": "int32"})
 
-    df_label_and_model_match = df_removed[df_removed["label"] == df_removed["prediction_class"]]
-    df_no_match = df_removed[df_removed["label"] != df_removed["prediction_class"]]
+    df_label_and_model_match = df_problematic[df_problematic["label"] == df_problematic["prediction_class"]]
+    df_no_match = df_problematic[df_problematic["label"] != df_problematic["prediction_class"]]
     log.info("Entries where our model matches test label", entries=len(df_label_and_model_match))
     log.info(
         "Entries where our model matches test label and the label is 0",
@@ -114,9 +107,9 @@ def create_readded_biowin() -> None:
     # Add data for which our prediction matched test label and train again
     df_readded = pd.concat([class_biowin, df_label_and_model_match], ignore_index=True)
     log.info("Entries in df_readded: ", df_readded=len(df_readded))
-    df_readded.to_csv(f"datasets/curated_data/class_curated_scs_biowin_readded_train.csv")
+    df_readded.to_csv(f"datasets/curated_data/class_curated_scs_biowin_readded.csv")
     class_biowin_removed = pd.read_csv(
-        "datasets/curated_data/class_curated_scs_biowin_removed.csv", index_col=0
+        "datasets/curated_data/class_curated_scs_removed.csv", index_col=0
     )
     df_no_match = pd.concat([class_biowin_removed, df_no_match], axis=0)
     df_no_match.to_csv(f"datasets/curated_data/class_curated_scs_biowin_readded_removed.csv")

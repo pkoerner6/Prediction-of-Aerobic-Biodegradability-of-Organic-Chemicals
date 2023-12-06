@@ -923,7 +923,7 @@ def convert_reaction_time_to_days(df: pd.DataFrame) -> pd.DataFrame:
 def additionality_to_paper(df_echa: pd.DataFrame) -> None:
 
     def load_regression_df() -> pd.DataFrame:
-        df_regression = pd.read_excel("datasets/Huang_Zhang_RegressionDataset.xlsx", index_col=0)
+        df_regression = pd.read_excel("datasets/external_data/Huang_Zhang_RegressionDataset.xlsx", index_col=0)
         df_regression.rename(
             columns={
                 "Substance Name": "name",

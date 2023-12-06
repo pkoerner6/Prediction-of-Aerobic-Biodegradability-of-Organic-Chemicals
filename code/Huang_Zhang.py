@@ -114,6 +114,7 @@ def run_xgbregressor_on_additional_echa_data(
     if args.data_info:
         log.info("Analysing additional ECHA data for regression")
         info_dataset(df_additional, dataset_type="regression", inchi_col_name="inchi_from_smiles")
+    print(df_additional.columns) # TODO
     x_input = create_input_regression(df=df_additional, include_speciation=False) # True does not work! Interesting because that means the provided model was trained without the extra features
     df_additional["prediction"] = model.predict(x_input)
     analyze_regression_results_and_plot(

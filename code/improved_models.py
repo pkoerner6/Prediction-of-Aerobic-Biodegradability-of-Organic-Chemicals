@@ -33,8 +33,6 @@ from sklearn.metrics import (
     r2_score,
 )
 
-parser = argparse.ArgumentParser()
-
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from processing_functions import create_input_regression
 from processing_functions import create_input_classification
