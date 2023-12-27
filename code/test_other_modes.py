@@ -21,6 +21,7 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 import deepchem as dc
 from deepchem.feat import RdkitGridFeaturizer
+from deepchem.models.torch_models import AtomConvModel
 import tempfile
 
 parser = argparse.ArgumentParser()
@@ -29,6 +30,13 @@ tqdm.pandas(desc='Description')
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from processing_functions import get_class_datasets
 
+parser.add_argument(
+    "--random_seed",
+    type=int,
+    default=42,
+    help="Select the random seed",
+)
+args = parser.parse_args()
 
 
 def run_lazy():
@@ -57,13 +65,9 @@ def run_lazy():
   log.info(models)
 
 
-def test_models():
-  test_df = pd.read_csv("datasets/curated_data/class_curated_scs_multiple.csv", index_col=0)
-  datasets = get_class_datasets()
-  train_df = datasets["df_curated_scs_biowin_readded"].copy()
-  train_df = train_df[~train_df["cas"].isin(test_df["cas"])]
-  test_df.reset_index(inplace=True, drop=True)
-  train_df.reset_index(inplace=True, drop=True)
+def test_GraphConvModel():
+  df = pd.read_csv("datasets/curated_data/class_curated_final.csv", index_col=0)
+  train_df, test_df = train_test_split(df, test_size=0.2, random_state=args.random_seed)
 
   # Function to generate 3D coordinates
   with dc.utils.UniversalNamedTemporaryFile(mode='w') as tmpfile:
@@ -98,10 +102,9 @@ def test_models():
   print('Test set score:', model.evaluate(test_dataset, [metric], transformers=[]))
 
 
-
 if __name__ == "__main__":
   # run_lazy()
-  test_models()
+  test_GraphConvModel()
 
 
 

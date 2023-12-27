@@ -22,6 +22,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import (
     make_scorer,
     accuracy_score,
+    balanced_accuracy_score,
     f1_score,
     recall_score,
     mean_absolute_error,
@@ -49,7 +50,7 @@ from processing_functions import get_inchi_main_layer
 
 
 def get_class_results(true: np.ndarray, pred: np.ndarray) -> Tuple[float, float, float, float]:
-    accuracy = accuracy_score(true, pred)
+    accuracy = balanced_accuracy_score(true, pred)
     f1 = f1_score(true, pred)
     sensitivity = recall_score(true, pred)
     specificity = recall_score(true, pred, pos_label=0)
@@ -64,28 +65,10 @@ def print_class_results(accuracy: float, sensitivity: float, specificity: float,
     return accuracy
 
 
-# def find_old_inchi_paper(df_test: pd.DataFrame) -> List[str]:
-#     df_checked = pd.read_excel("datasets/substances_with_env_smiles.xlsx", index_col=0)
-
-#     old_smiles_to_delete: List[str] = []
-#     for smiles in df_test["smiles"]:
-#         match = df_checked[df_checked["env_smiles"] == smiles]
-
-#         if len(match) < 1:
-#             match2 = df_checked[df_checked["smiles"] == smiles]
-#             if len(match2) < 1:
-#                 continue
-#         else:
-#             smiles_checked = str(match["smiles"].values[0])
-#             env_smiles = str(match["env_smiles"].values[0])
-#             if (smiles_checked != env_smiles):
-#                 old_smiles_to_delete.append(smiles_checked)
-#     return old_smiles_to_delete
-
 
 def split_classification_df_with_fixed_test_set(
     df: pd.DataFrame,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     nsplits: int,
     random_seed: int,
     cols: List[str],
@@ -95,7 +78,7 @@ def split_classification_df_with_fixed_test_set(
     train_sets: List[pd.DataFrame] = []
     test_sets: List[pd.DataFrame] = []
 
-    dfs = [df, df_smallest]
+    dfs = [df, df_test]
     for i, df in enumerate(dfs):
         if "inchi_from_smiles" not in df.columns:
             df_smiles_correct = remove_smiles_with_incorrect_format(df=df, col_name_smiles="smiles")
@@ -106,32 +89,31 @@ def split_classification_df_with_fixed_test_set(
                 output_type="inchi",
             )
     df = dfs[0][cols + ["inchi_from_smiles", "y_true"]]
-    df_smallest = dfs[1][cols + ["inchi_from_smiles", "y_true"]]
+    df_test = dfs[1][cols + ["inchi_from_smiles", "y_true"]]
 
-    print("df_smallest: ", len(df_smallest))
     skf = StratifiedKFold(n_splits=nsplits, shuffle=True, random_state=random_seed)
-    for _, test_index in skf.split(df_smallest[cols + ["inchi_from_smiles"]], df_smallest["y_true"]):
-        df_test = df_smallest[df_smallest.index.isin(test_index)]
-        train_set = df[~df["inchi_from_smiles"].isin(df_test["inchi_from_smiles"])]
+    for _, test_index in skf.split(df_test[cols + ["inchi_from_smiles"]], df_test["y_true"]):
+        df_test_set = df_test[df_test.index.isin(test_index)]
+        train_set = df[~df["inchi_from_smiles"].isin(df_test_set["inchi_from_smiles"])]
         if paper:
-            # train_set = train_set[~train_set["cas"].isin(df_test["cas"])]
-            # old_smiles_to_delete = find_old_inchi_paper(df_test)
-            # print(len(old_smiles_to_delete))
-            # train_set = train_set[~train_set["smiles"].isin(old_smiles_to_delete)]
-            df_test = get_inchi_main_layer(df=df_test, inchi_col="inchi_from_smiles", layers=3)
-            df_train = get_inchi_main_layer(df=df, inchi_col="inchi_from_smiles", layers=3)
-            train_set = df_train[~df_train["inchi_from_smiles_main_layer"].isin(df_test["inchi_from_smiles_main_layer"])]
-            train_set = train_set[~train_set["cas"].isin(df_test["cas"])]
-        log.info("Test sizes: ", test_set=len(df_test), deleted=len(df)-len(train_set))
+            df_checked = pd.read_excel("datasets/chemical_speciation.xlsx", index_col=0)
+            test_checked = df_checked[
+                df_checked["env_smiles"].isin(df_test_set["smiles"]) | 
+                df_checked["inchi_from_smiles"].isin(df_test_set["inchi_from_smiles"])]
+            train_set = train_set[~(train_set["inchi_from_smiles"].isin(test_checked["inchi_from_smiles"]))]
+            train_set = train_set[~(train_set["smiles"].isin(test_checked["env_smiles"]))]
+            train_set = train_set.loc[~((train_set["cas"].isin(test_checked["cas"])) & (test_checked["cas"].notna())), :]
+            train_set = train_set.loc[~((train_set["cas"].isin(df_test_set["cas"])) & (df_test_set["cas"].notna())), :]
+        # log.info("Test sizes: ", test_set=len(df_test_set), deleted=len(df)-len(train_set)) # TODO
         train_sets.append(train_set)
-        test_sets.append(df_test)
+        test_sets.append(df_test_set)
 
     return train_sets, test_sets
 
 
 def skf_class_fixed_testset(
     df: pd.DataFrame,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     nsplits: int,
     random_seed: int,
     include_speciation: bool,
@@ -140,7 +122,7 @@ def skf_class_fixed_testset(
 ) -> Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray], List[np.ndarray], List[pd.DataFrame], List[int]]:
     train_sets, test_sets = split_classification_df_with_fixed_test_set(
         df=df,
-        df_smallest=df_smallest,
+        df_test=df_test,
         nsplits=nsplits,
         random_seed=random_seed,
         cols=cols,
@@ -166,44 +148,6 @@ def skf_class_fixed_testset(
     return x_train_fold_lst, y_train_fold_lst, x_test_fold_lst, y_test_fold_lst, df_test_lst, test_set_sizes
 
 
-def skf_class_no_fixed_testset(
-    df: pd.DataFrame,
-    nsplits: int,
-    random_seed: int,
-    include_speciation: bool,
-    cols: List[str],
-) -> Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray], List[np.ndarray], List[pd.DataFrame], List[int]]:
-
-    df.reset_index(inplace=True, drop=True)
-    train_indices: List[np.ndarray] = []
-    test_indices: List[np.ndarray] = []
-    x_train_fold_lst: List[np.ndarray] = []
-    y_train_fold_lst: List[np.ndarray] = []
-    x_test_fold_lst: List[np.ndarray] = []
-    y_test_fold_lst: List[np.ndarray] = []
-    df_test_lst: List[pd.DataFrame] = []
-    test_set_sizes: List[int] = []
-
-    df = df[cols + ["y_true"]]
-    x = create_input_classification(df.copy(), include_speciation=include_speciation)
-    y = df["y_true"]
-    skf = StratifiedKFold(n_splits=nsplits, shuffle=True, random_state=random_seed)
-    for train_index, test_index in skf.split(x, y):
-        train_indices.append(train_index)
-        test_indices.append(test_index)
-    for split in range(nsplits):
-        x_train_fold, x_test_fold = x[train_indices[split]], x[test_indices[split]]
-        y_train_fold, y_test_fold = y[train_indices[split]], y[test_indices[split]]
-        x_train_fold_lst.append(x_train_fold)
-        y_train_fold_lst.append(y_train_fold)
-        x_test_fold_lst.append(x_test_fold)
-        y_test_fold_lst.append(y_test_fold)
-        df_test = df[df.index.isin(test_indices[split])].copy()
-        df_test_lst.append(df_test)
-        test_set_sizes.append(len(df_test))
-    return x_train_fold_lst, y_train_fold_lst, x_test_fold_lst, y_test_fold_lst, df_test_lst, test_set_sizes
-
-
 def get_balanced_data_adasyn(random_seed: int, x: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     entries_class_1 = len(y[y == 1])
     entries_class_0 = len(y[y == 0])
@@ -221,65 +165,25 @@ def get_balanced_data_adasyn(random_seed: int, x: np.ndarray, y: np.ndarray) -> 
     return x, y
 
 
-def skf_classification(
+
+def run_balancing_and_training(
     df: pd.DataFrame,
-    random_seed: int,
-    nsplits: int,
+    x_train_fold_lst: List[np.ndarray], 
+    y_train_fold_lst: List[np.ndarray], 
+    x_test_fold_lst: List[np.ndarray], 
+    y_test_fold_lst: List[np.ndarray],
+    test_set_sizes: List[int],
     use_adasyn: bool,
-    include_speciation: bool,
-    fixed_testset: bool,
-    df_smallest: pd.DataFrame,
-    dataset_name: str,
+    random_seed: int,
     model,
-) -> Tuple[List[float], List[float], List[float], List[float]]:
-
-    df.reset_index(inplace=True, drop=True)
-
+):  
     lst_accu: List[float] = []
     lst_sensitivity: List[float] = []
     lst_specificity: List[float] = []
     lst_f1: List[float] = []
 
-    cols = ["cas", "smiles"]
-    if include_speciation:
-        cols += get_speciation_col_names()
+    for x_train, y_train, x_test, y_test in zip(x_train_fold_lst, y_train_fold_lst, x_test_fold_lst, y_test_fold_lst):  
 
-    paper = True if dataset_name == "df_paper" else False
-    if fixed_testset:
-        (
-            x_train_fold_lst,
-            y_train_fold_lst,
-            x_test_fold_lst,
-            y_test_fold_lst,
-            df_test_lst,
-            test_set_sizes,
-        ) = skf_class_fixed_testset(
-            df=df,
-            df_smallest=df_smallest,
-            nsplits=nsplits,
-            random_seed=random_seed,
-            include_speciation=include_speciation,
-            cols=cols,
-            paper=paper,
-        )
-    else:
-        (
-            x_train_fold_lst,
-            y_train_fold_lst,
-            x_test_fold_lst,
-            y_test_fold_lst,
-            df_test_lst,
-            test_set_sizes,
-        ) = skf_class_no_fixed_testset(
-            df=df,
-            nsplits=nsplits,
-            random_seed=random_seed,
-            include_speciation=include_speciation,
-            cols=cols,
-        )
-    for split, (x_train, y_train, x_test, y_test) in enumerate(
-        zip(x_train_fold_lst, y_train_fold_lst, x_test_fold_lst, y_test_fold_lst)
-    ):
         if use_adasyn:
             x_train_fold, y_train_fold = get_balanced_data_adasyn(random_seed=random_seed, x=x_train, y=y_train)
             model.fit(x_train_fold, y_train_fold)
@@ -290,25 +194,65 @@ def skf_classification(
         prediction = model.predict(x_test)
         accuracy, f1, sensitivity, specificity = get_class_results(true=y_test, pred=prediction)
 
-        if split == 0:
-            df_test_lst[split]["prediction"] = model.predict(x_test)
-
-            test_set = "_fixed_testset" if fixed_testset else ""
-            plot_classification_bar(
-                df=df_test_lst[split],
-                accuracy=accuracy,
-                figure_name=f"XGBC_trained_on_{dataset_name}{test_set}",
-                figure_title=f"Model trained on \n {dataset_name}",
-            )
-
         lst_accu.append(round(accuracy, 4))
         lst_sensitivity.append(round(sensitivity, 4))
         lst_specificity.append(round(specificity, 4))
         lst_f1.append(round(f1, 4))
 
+
     average_test_size = round(sum(test_set_sizes) / len(test_set_sizes), 1)
     test_percent = round(((average_test_size) / len(df)) * 100, 1)
     log.info("Test set size", size=average_test_size, percent=f"{test_percent}%")
+
+    return lst_accu, lst_sensitivity, lst_specificity, lst_f1
+
+
+def skf_classification(
+    df: pd.DataFrame,
+    random_seed: int,
+    nsplits: int,
+    use_adasyn: bool,
+    include_speciation: bool,
+    df_test: pd.DataFrame,
+    dataset_name: str,
+    model,
+) -> Tuple[List[float], List[float], List[float], List[float]]:
+
+    df.reset_index(inplace=True, drop=True)
+
+    cols = ["cas", "smiles"]
+    if include_speciation:
+        cols += get_speciation_col_names()
+
+    paper = True if dataset_name == "df_paper" else False
+    (
+        x_train_fold_lst,
+        y_train_fold_lst,
+        x_test_fold_lst,
+        y_test_fold_lst,
+        df_test_lst,
+        test_set_sizes,
+    ) = skf_class_fixed_testset(
+        df=df,
+        df_test=df_test,
+        nsplits=nsplits,
+        random_seed=random_seed,
+        include_speciation=include_speciation,
+        cols=cols,
+        paper=paper,
+    )
+
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = run_balancing_and_training(
+        df=df,
+        x_train_fold_lst=x_train_fold_lst, 
+        y_train_fold_lst=y_train_fold_lst, 
+        x_test_fold_lst=x_test_fold_lst, 
+        y_test_fold_lst=y_test_fold_lst,
+        test_set_sizes=test_set_sizes,
+        use_adasyn=use_adasyn,
+        random_seed=random_seed,
+        model=model,
+    )
 
     metrics = ["accuracy", "sensitivity", "specificity", "f1"]
     metrics_values = [
@@ -360,7 +304,7 @@ def split_regression_df_with_grouping(
 
 def split_regression_df_with_grouping_and_fixed_test_set(
     df: pd.DataFrame,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     nsplits: int,
     column_for_grouping: str,
     random_seed: int,
@@ -369,7 +313,7 @@ def split_regression_df_with_grouping_and_fixed_test_set(
     train_dfs: List[pd.DataFrame] = []
     test_dfs: List[pd.DataFrame] = []
 
-    dfs = [df, df_smallest]
+    dfs = [df, df_test]
     for i, df in enumerate(dfs):
         if "inchi_from_smiles" not in list(df.columns):
             df_smiles_correct = remove_smiles_with_incorrect_format(df=df, col_name_smiles="smiles")
@@ -380,10 +324,10 @@ def split_regression_df_with_grouping_and_fixed_test_set(
                 output_type="inchi",
             )
     df = dfs[0]
-    df_smallest = dfs[1]
+    df_test = dfs[1]
 
     _, test_dfs_smallest = split_regression_df_with_grouping(
-        df=df_smallest,
+        df=df_test,
         nsplits=nsplits,
         column_for_grouping=column_for_grouping,
         random_seed=random_seed,
@@ -416,7 +360,7 @@ def kf_regression(
     nsplits: int,
     include_speciation: bool,
     fixed_testset: bool,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     dataset_name: str,
     model,
 ) -> Tuple[List[float], List[float], List[float], List[float]]:
@@ -427,7 +371,7 @@ def kf_regression(
     if fixed_testset:
         train_dfs, test_dfs = split_regression_df_with_grouping_and_fixed_test_set(
             df=df,
-            df_smallest=df_smallest,
+            df_test=df_test,
             nsplits=nsplits,
             column_for_grouping=column_for_grouping,
             random_seed=random_seed,
@@ -580,7 +524,7 @@ def train_regressor_with_best_hyperparamters(
     nsplits: int,
     include_speciation: bool,
     fixed_testset: bool,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     dataset_name: str,
     best_params: Dict,
     model,
@@ -592,7 +536,7 @@ def train_regressor_with_best_hyperparamters(
         nsplits=nsplits,
         include_speciation=include_speciation,
         fixed_testset=fixed_testset,
-        df_smallest=df_smallest,
+        df_test=df_test,
         dataset_name=dataset_name,
         model=model(**best_params),
     )
@@ -610,7 +554,7 @@ def tune_and_train_regressor(
     search_spaces: Dict,
     include_speciation: bool,
     fixed_testset: bool,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     dataset_name: str,
     n_jobs: int,
     model,
@@ -633,7 +577,7 @@ def tune_and_train_regressor(
         nsplits=nsplits,
         include_speciation=include_speciation,
         fixed_testset=fixed_testset,
-        df_smallest=df_smallest,
+        df_test=df_test,
         dataset_name=dataset_name,
         best_params=best_params,
         model=model,
@@ -718,14 +662,14 @@ def get_lazy_xgbc_parameters() -> Dict[str, object]:
     return best_params
 
 
-def run_XGBRegressor_Huang_Zhang(
+def train_XGBRegressor_Huang_Zhang(
     df: pd.DataFrame,
     column_for_grouping: str,
     random_seed: int,
     nsplits: int,
     include_speciation: bool,
     fixed_testset: bool,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     dataset_name: str,
 ) -> Tuple[List[float], List[float], List[float], List[float]]:
     model = XGBRegressor
@@ -738,7 +682,7 @@ def run_XGBRegressor_Huang_Zhang(
         nsplits=nsplits,
         include_speciation=include_speciation,
         fixed_testset=fixed_testset,
-        df_smallest=df_smallest,
+        df_test=df_test,
         dataset_name=dataset_name,
         model=model(**best_params),
     )
@@ -755,7 +699,6 @@ def tune_classifiers(
     nsplits: int,
     search_spaces: Dict,
     include_speciation: bool,
-    fixed_testset: bool,
     n_jobs: int,
     model,
 ):
@@ -764,7 +707,7 @@ def tune_classifiers(
 
     x, y = get_balanced_data_adasyn(random_seed=random_seed, x=x, y=y)
 
-    scoring = make_scorer(accuracy_score, greater_is_better=True)
+    scoring = make_scorer(balanced_accuracy_score, greater_is_better=True)
     skf = StratifiedKFold(n_splits=nsplits, shuffle=True, random_state=random_seed)
     cv_strategy = list(skf.split(x, y))
 
@@ -800,8 +743,7 @@ def train_classifier_with_best_hyperparamters(
     random_seed: int,
     nsplits: int,
     include_speciation: bool,
-    fixed_testset: bool,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     dataset_name: str,
     best_params: Dict,
     paper: bool, 
@@ -813,8 +755,7 @@ def train_classifier_with_best_hyperparamters(
         nsplits=nsplits,
         use_adasyn=True,
         include_speciation=include_speciation,
-        fixed_testset=fixed_testset,
-        df_smallest=df_smallest,
+        df_test=df_test,
         dataset_name=dataset_name,
         model=model(**best_params),
     )
@@ -831,8 +772,7 @@ def tune_and_train_classifiers(
     nsplits: int,
     search_spaces: Dict,
     include_speciation: bool,
-    fixed_testset: bool,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     dataset_name: str,
     n_jobs: int,
     model,
@@ -844,7 +784,6 @@ def tune_and_train_classifiers(
         nsplits=nsplits,
         search_spaces=search_spaces,
         include_speciation=include_speciation,
-        fixed_testset=fixed_testset,
         n_jobs=n_jobs,
         model=model,
     )
@@ -854,8 +793,7 @@ def tune_and_train_classifiers(
         random_seed=random_seed,
         nsplits=nsplits,
         include_speciation=include_speciation,
-        fixed_testset=fixed_testset,
-        df_smallest=df_smallest,
+        df_test=df_test,
         dataset_name=dataset_name,
         best_params=best_params,
         paper=paper,
@@ -864,14 +802,13 @@ def tune_and_train_classifiers(
     return accu, f1, sensitivity, specificity
 
 
-def run_XGBClassifier_Huang_Zhang(
+def train_XGBClassifier( # run_XGBClassifier_Huang_Zhang
     df: pd.DataFrame,
     random_seed: int,
     nsplits: int,
     use_adasyn: bool,
     include_speciation: bool,
-    fixed_testset: bool,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     dataset_name: str,
 ) -> Tuple[List[float], List[float], List[float], List[float]]:
 
@@ -881,8 +818,7 @@ def run_XGBClassifier_Huang_Zhang(
         nsplits=nsplits,
         use_adasyn=use_adasyn,
         include_speciation=include_speciation,
-        fixed_testset=fixed_testset,
-        df_smallest=df_smallest,
+        df_test=df_test,
         dataset_name=dataset_name,
         model=XGBClassifier(),  # Default parameters as in paper
     )
@@ -893,7 +829,7 @@ def run_XGBClassifier_Huang_Zhang(
     return accu, f1, sensitivity, specificity
 
 
-def train_XGBClassifier_Huang_Zhang_on_all_data(
+def train_XGBClassifier_on_all_data( # train_XGBClassifier_Huang_Zhang_on_all_data
     df: pd.DataFrame,
     random_seed: int,
     use_adasyn: bool,
@@ -944,7 +880,7 @@ def tune_and_train_XGBRegressor(
     nsplits: int,
     include_speciation: bool,
     fixed_testset: bool,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     dataset_name: str,
     n_jobs: int,
 ) -> Tuple[List[float], List[float], List[float], List[float]]:
@@ -980,7 +916,7 @@ def tune_and_train_XGBRegressor(
         search_spaces=search_spaces,
         include_speciation=include_speciation,
         fixed_testset=fixed_testset,
-        df_smallest=df_smallest,
+        df_test=df_test,
         dataset_name=dataset_name,
         n_jobs=n_jobs,
         model=model,
@@ -994,7 +930,7 @@ def tune_and_train_HistGradientBoostingRegressor(
     nsplits: int,
     include_speciation: bool,
     fixed_testset: bool,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     dataset_name: str,
     n_jobs: int,
 ) -> Tuple[List[float], List[float], List[float], List[float]]:
@@ -1018,7 +954,7 @@ def tune_and_train_HistGradientBoostingRegressor(
         search_spaces=search_spaces,
         include_speciation=include_speciation,
         fixed_testset=fixed_testset,
-        df_smallest=df_smallest,
+        df_test=df_test,
         dataset_name=dataset_name,
         n_jobs=n_jobs,
         model=model,
@@ -1032,7 +968,7 @@ def tune_and_train_RandomForestRegressor(
     nsplits: int,
     include_speciation: bool,
     fixed_testset: bool,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     dataset_name: str,
     n_jobs: int,
 ) -> Tuple[List[float], List[float], List[float], List[float]]:
@@ -1053,7 +989,7 @@ def tune_and_train_RandomForestRegressor(
         search_spaces=search_spaces,
         include_speciation=include_speciation,
         fixed_testset=fixed_testset,
-        df_smallest=df_smallest,
+        df_test=df_test,
         dataset_name=dataset_name,
         n_jobs=n_jobs,
         model=model,
@@ -1067,7 +1003,7 @@ def tune_and_train_LGBMRegressor(
     nsplits: int,
     include_speciation: bool,
     fixed_testset: bool,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     dataset_name: str,
     n_jobs: int,
 ) -> Tuple[List[float], List[float], List[float], List[float]]:
@@ -1089,7 +1025,7 @@ def tune_and_train_LGBMRegressor(
         search_spaces=search_spaces,
         include_speciation=include_speciation,
         fixed_testset=fixed_testset,
-        df_smallest=df_smallest,
+        df_test=df_test,
         dataset_name=dataset_name,
         n_jobs=n_jobs,
         model=model,
@@ -1103,7 +1039,7 @@ def tune_and_train_SVR(
     nsplits: int,
     include_speciation: bool,
     fixed_testset: bool,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     dataset_name: str,
     n_jobs: int,
 ) -> Tuple[List[float], List[float], List[float], List[float]]:
@@ -1125,7 +1061,7 @@ def tune_and_train_SVR(
         search_spaces=search_spaces,
         include_speciation=include_speciation,
         fixed_testset=fixed_testset,
-        df_smallest=df_smallest,
+        df_test=df_test,
         dataset_name=dataset_name,
         n_jobs=n_jobs,
         model=model,
@@ -1138,8 +1074,7 @@ def tune_and_train_LGBMClassifier(
     random_seed: int,
     nsplits: int,
     include_speciation: bool,
-    fixed_testset: bool,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     dataset_name: str,
     n_jobs: int,
 ) -> Tuple[List[float], List[float], List[float], List[float]]:
@@ -1159,8 +1094,7 @@ def tune_and_train_LGBMClassifier(
         nsplits=nsplits,
         search_spaces=search_spaces,
         include_speciation=include_speciation,
-        fixed_testset=fixed_testset,
-        df_smallest=fixed_testset,
+        df_test=df_test,
         dataset_name=dataset_name,
         n_jobs=n_jobs,
         model=model,
@@ -1173,8 +1107,7 @@ def tune_and_train_XGBClassifier(
     random_seed: int,
     nsplits: int,
     include_speciation: bool,
-    fixed_testset: bool,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     dataset_name: str,
     n_jobs: int,
 ) -> Tuple[List[float], List[float], List[float], List[float]]:
@@ -1206,8 +1139,7 @@ def tune_and_train_XGBClassifier(
         nsplits=nsplits,
         search_spaces=search_spaces,
         include_speciation=include_speciation,
-        fixed_testset=fixed_testset,
-        df_smallest=df_smallest,
+        df_test=df_test,
         dataset_name=dataset_name,
         n_jobs=n_jobs,
         model=model,
@@ -1220,8 +1152,7 @@ def tune_and_train_ExtraTreesClassifier(
     random_seed: int,
     nsplits: int,
     include_speciation: bool,
-    fixed_testset: bool,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     dataset_name: str,
     n_jobs: int,
 ) -> Tuple[List[float], List[float], List[float], List[float]]:
@@ -1242,8 +1173,7 @@ def tune_and_train_ExtraTreesClassifier(
         nsplits=nsplits,
         search_spaces=search_spaces,
         include_speciation=include_speciation,
-        fixed_testset=fixed_testset,
-        df_smallest=fixed_testset,
+        df_test=df_test,
         dataset_name=dataset_name,
         n_jobs=n_jobs,
         model=model,
@@ -1256,8 +1186,7 @@ def tune_and_train_RandomForestClassifier(
     random_seed: int,
     nsplits: int,
     include_speciation: bool,
-    fixed_testset: bool,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     dataset_name: str,
     n_jobs: int,
 ) -> Tuple[List[float], List[float], List[float], List[float]]:
@@ -1277,8 +1206,7 @@ def tune_and_train_RandomForestClassifier(
         nsplits=nsplits,
         search_spaces=search_spaces,
         include_speciation=include_speciation,
-        fixed_testset=fixed_testset,
-        df_smallest=fixed_testset,
+        df_test=df_test,
         dataset_name=dataset_name,
         n_jobs=n_jobs,
         model=model,
@@ -1291,8 +1219,7 @@ def tune_and_train_BaggingClassifier(
     random_seed: int,
     nsplits: int,
     include_speciation: bool,
-    fixed_testset: bool,
-    df_smallest: pd.DataFrame,
+    df_test: pd.DataFrame,
     dataset_name: str,
     n_jobs: int,
 ) -> Tuple[List[float], List[float], List[float], List[float]]:
@@ -1311,8 +1238,7 @@ def tune_and_train_BaggingClassifier(
         nsplits=nsplits,
         search_spaces=search_spaces,
         include_speciation=include_speciation,
-        fixed_testset=fixed_testset,
-        df_smallest=fixed_testset,
+        df_test=df_test,
         dataset_name=dataset_name,
         n_jobs=n_jobs,
         model=model,
@@ -1362,48 +1288,6 @@ def analyze_regression_results_and_plot(df: pd.DataFrame, figure_name: str, figu
     log.info(f"R2", r2="{:.2f}".format(r2))
     log.info("MSE", mse="{:.2f}".format(mse))
     plot_regression_error(df, figure_name, figure_title)
-
-
-def plot_classification_bar(
-    df: pd.DataFrame,
-    accuracy: float,
-    figure_name: str,
-    figure_title: str,
-    with_title=False,
-) -> None:
-    true_NRB = len(df[(df["y_true"] == 0) & (df["prediction"] == 0)])
-    true_RB = len(df[(df["y_true"] == 1) & (df["prediction"] == 1)])
-    false_NRB = len(df[(df["y_true"] == 0) & (df["prediction"] == 1)])
-    false_RB = len(df[(df["y_true"] == 1) & (df["prediction"] == 0)])
-    rb_class = ("NRB", "RB")
-    colors = ["cornflowerblue", "mediumseagreen"]
-    weight_counts = {
-        "correct prediction": np.array([true_NRB, true_RB]),
-        "false prediction": np.array([false_NRB, false_RB]),
-    }
-    width = 0.8
-    _, ax = plt.subplots()
-    bottom = np.zeros(2)
-    for (prediction_type, weight_count), color in zip(weight_counts.items(), colors):
-        _ = ax.bar(rb_class, weight_count, width, label=prediction_type, bottom=bottom, color=color)
-        bottom += weight_count
-    ax.set_xlabel("Class labels", fontsize=14)
-    ax.set_ylabel("Data per class", fontsize=14)
-    ax.tick_params(axis="both", which="major", labelsize=12)
-    ax.tick_params(axis="both", which="minor", labelsize=12)
-    box = ax.get_position()
-    if with_title:
-        ax.set_title(f"{figure_title} \n (Accuracy = {'%.1f' % (accuracy*100)} %)", fontsize=14, y=1)
-        ax.set_position([box.x0, box.y0, box.width * 0.65, box.height * 0.9])
-    else:
-        ax.set_position([box.x0, box.y0, box.width * 0.65, box.height * 1])
-    ax.legend(loc="center left", bbox_to_anchor=(1, 0.5), fontsize=12).set_title(
-        f"Accuracy = {'%.1f' % (accuracy*100)} %", prop={"size": "large"}
-    )
-    for bars in ax.containers:
-        ax.bar_label(container=bars, label_type="center")
-    plt.savefig(f"figures/classification_prediction_error_{figure_name}.png")
-    plt.close()
 
 
 

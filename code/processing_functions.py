@@ -26,6 +26,7 @@ import urllib.request
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
+import matplotlib.pyplot as plt
 
 
 RDLogger.DisableLog("rdApp.*")  # Disable warnings from rdkit
@@ -247,7 +248,8 @@ def get_inchi_layers(row, col_name: str, layers: int):
                 inchi_split = inchi.split("/")
                 inchi_new = inchi_split[0] + "/" + inchi_split[1] + "/" + inchi_split[2] + "/" + inchi_split[3]
             except:
-                log.warn("No main layer for inchi", inchi=inchi)
+                pass
+                # log.warn("No main layer for inchi", inchi=inchi)
         elif layers == 3:
             try:
                 inchi_split = inchi.split("/")
@@ -393,7 +395,7 @@ def remove_organo_metals_function(df: pd.DataFrame, smiles_column: str) -> Tuple
     df["organo_metal"] = df.apply(remove_organo_metals_by_row, axis=1)
     organo_metals = df[df["organo_metal"] == True]
     none_organo_metals = df[df["organo_metal"] == False]
-    log.info("Number of organo-metals found", organo_metals=len(organo_metals))
+    log.info("Number of organo-metals found", organo_metals_substances=organo_metals.inchi_from_smiles.nunique())
     return none_organo_metals, organo_metals
 
 
@@ -736,23 +738,29 @@ def replace_smiles_with_env_relevant_smiles(df_without_env_smiles: pd.DataFrame)
         smiles = row["smiles"]
         cas = row["cas"]
         inchi = row["inchi_from_smiles"]
-        match = df_checked[df_checked["cas"] == cas]
+        match = df_checked[df_checked["inchi_from_smiles"] == inchi]
 
         if len(match) < 1:
-            log.warn("CAS not found, deleted this datapoint!! ", cas=cas, smiles=smiles, inchi=inchi)
+            log.warn("InChI not found, deleted this datapoint!! ", cas=cas, smiles=smiles, inchi=inchi)
             smiles = "delete"
+            reason = ""
         else:
             smiles_checked = str(match["smiles"].values[0])
             env_smiles = str(match["env_smiles"].values[0])
+            reason = str(match["comment_smiles_at_ph_7_4"].values[0])
             if (smiles_checked != env_smiles) and (env_smiles != "-"):
                 smiles = env_smiles
-        return smiles
+        return pd.Series([smiles, reason])
     df_without_env_smiles = df_without_env_smiles.copy()
-    df_without_env_smiles["smiles"] = df_without_env_smiles.apply(get_env_smiles, axis=1)
+    df_without_env_smiles[["smiles", "reason"]] = df_without_env_smiles.apply(get_env_smiles, axis=1)
 
-    df_removed_because_no_main_component_at_ph_or_other_issue = df_without_env_smiles[
+    df_removed = df_without_env_smiles[
         df_without_env_smiles["smiles"] == "delete"
     ]
+    df_removed_no_main_component = df_removed[df_removed["reason"]=="no main component at pH 7.4"]
+    df_removed_mixture = df_removed[(df_removed["reason"]=="mixture") | (df_removed["reason"]=="?")]
+    log.info("Deleted because no main component at pH 7.4: ", no_main_component=df_removed_no_main_component.inchi_from_smiles.nunique())
+    log.info("Deleted because mixture: ", mixture=df_removed_mixture.inchi_from_smiles.nunique())
     df_with_env_smiles = df_without_env_smiles[df_without_env_smiles["smiles"] != "delete"].copy()
     df_correct_smiles = remove_smiles_with_incorrect_format(df=df_with_env_smiles, col_name_smiles="smiles")
     df_with_env_smiles = openbabel_convert(
@@ -762,15 +770,13 @@ def replace_smiles_with_env_relevant_smiles(df_without_env_smiles: pd.DataFrame)
         output_type="inchi",
     )
     assert len(df_with_env_smiles[df_with_env_smiles["smiles"] == "delete"]) == 0
-    return df_with_env_smiles, df_removed_because_no_main_component_at_ph_or_other_issue
+    df_with_env_smiles.drop(columns=["reason"], inplace=True)
+    return df_with_env_smiles, df_removed
 
 
 def remove_cas_connected_to_more_than_one_inchi(df: pd.DataFrame, prnt: bool) -> pd.DataFrame:
     df = df.astype({"smiles": str, "cas": str})
-    df_correct = remove_smiles_with_incorrect_format(df=df, col_name_smiles="smiles") # TODO should not be necessary
-    if prnt:
-        log.info("Entries with correct format: ", entries=len(df), correct=len(df_correct))
-    df = openbabel_convert(df=df_correct, input_type="smiles", column_name_input="smiles", output_type="inchi")
+    df = openbabel_convert(df=df, input_type="smiles", column_name_input="smiles", output_type="inchi")
     if prnt:
         log.info(
             "Unique identifiers old",
@@ -778,31 +784,22 @@ def remove_cas_connected_to_more_than_one_inchi(df: pd.DataFrame, prnt: bool) ->
             unique_inchi=df["inchi_from_smiles"].nunique(),
             unique_smiles=df["smiles"].nunique(),
         )
-
-    if not os.path.exists("datasets/cas_connected_to_more_than_one_inchi.csv"):
-        cas_connected_to_more_than_one_inchi: Dict[str, str] = {}
-    else:
-        df_cas_problematic = pd.read_csv("datasets/cas_connected_to_more_than_one_inchi.csv", index_col=0)
-        cas_connected_to_more_than_one_inchi = pd.Series(df_cas_problematic.new.values,index=df_cas_problematic.cas).to_dict()
     
+    cas_connected_to_more_than_one_inchi: List[str] = []
     for cas, group in df.groupby("cas"):
         if group["inchi_from_smiles"].nunique() > 1:
-            cas_connected_to_more_than_one_inchi[cas] = "removed"
-            df = df[df["cas"] != cas].copy()
+            cas_connected_to_more_than_one_inchi.append(cas)
     if len(cas_connected_to_more_than_one_inchi) == 0:
         log.info("No CAS RN found that are connected to more than one InChI")
     else:
         if prnt:
+            studies_connected_to_more_than_one_inchi = df[df["cas"].isin(cas_connected_to_more_than_one_inchi)]
+            substances_connected_to_more_than_one_inchi = studies_connected_to_more_than_one_inchi.inchi_from_smiles.nunique()
             log.warn(
                 "Removing this many CAS RN because they are connected to more than one InChI",
-                cas=len(cas_connected_to_more_than_one_inchi),
+                cas=len(cas_connected_to_more_than_one_inchi), substances=substances_connected_to_more_than_one_inchi
             )
-            log.warn(
-                f"Removing the following CAS RN because they are connected to more than one InChI",
-                cas=cas_connected_to_more_than_one_inchi,
-            )
-    df_cas_connected_to_more_than_one_inchi = pd.DataFrame(cas_connected_to_more_than_one_inchi.items(), columns=['cas', 'new'])
-    df_cas_connected_to_more_than_one_inchi.to_csv("datasets/cas_connected_to_more_than_one_inchi.csv")
+    df = df[~df["cas"].isin(cas_connected_to_more_than_one_inchi)].copy()
     return df
 
 
@@ -810,13 +807,7 @@ def replace_multiple_cas_for_one_inchi(df: pd.DataFrame, prnt: bool) -> pd.DataF
 
     df = remove_cas_connected_to_more_than_one_inchi(df=df, prnt=prnt)
 
-    if not os.path.exists("datasets/old_cas_to_new_cas.csv"):
-        print("Path does not exist")
-        old_cas_to_new_cas: Dict[str, str] = {}
-    else:
-        df_cas_problematic = pd.read_csv("datasets/old_cas_to_new_cas.csv", index_col=0)
-        old_cas_to_new_cas = pd.Series(df_cas_problematic.new.values,index=df_cas_problematic.cas).to_dict()
-
+    old_cas_to_new_cas: Dict[str, str] = {}
     for _, group in df.groupby("inchi_from_smiles"):
         if group["cas"].nunique() > 1:
             cass = group["cas"].unique()
@@ -832,8 +823,6 @@ def replace_multiple_cas_for_one_inchi(df: pd.DataFrame, prnt: bool) -> pd.DataF
             unique_inchi=df["inchi_from_smiles"].nunique(),
             unique_smiles=df["smiles"].nunique(),
         )
-    df_old_cas_to_new_cas = pd.DataFrame(old_cas_to_new_cas.items(), columns=['cas', 'new'])
-    df_old_cas_to_new_cas.to_csv("datasets/old_cas_to_new_cas.csv")
     return df
 
 
@@ -1049,13 +1038,14 @@ def process_external_dataset_lunghini(df: pd.DataFrame, class_df: pd.DataFrame, 
     df.rename(columns={"best_cas": "cas"}, inplace=True)
     if env_smiles_lunghini:
         df, _ = replace_smiles_with_env_relevant_smiles(df_without_env_smiles=df)
-    df = df[df["smiles"].notna()]
+
+    # Find data points for substances not already in class_df
     df_new = df[~df["inchi_from_smiles"].isin(class_df["inchi_from_smiles"])].copy()
-    df_new.drop_duplicates(subset=["inchi_from_smiles"], keep="first", inplace=True) # TODO should not be necessary
+    df_new.drop_duplicates(subset=["inchi_from_smiles"], keep="first", inplace=True)
     return df_new
 
 
-def get_external_dataset_lunghini( # TODO
+def get_external_dataset_lunghini(
     run_from_start: bool,
     class_df: pd.DataFrame,
     env_smiles_lunghini: bool,
@@ -1085,7 +1075,7 @@ def get_external_dataset_lunghini( # TODO
         log.info("Finished getting cas from pubchem!")
         log.warn("Finished creating dataset external. But pKa and alpha values still need to be added!!!")
     
-    df_lunghini_with_cas = pd.read_csv("datasets/external_data/lunghini_added_cas.csv", index_col=0)  # includes pka and alpha values
+    df_lunghini_with_cas = pd.read_csv("datasets/external_data/lunghini_added_cas.csv", index_col=0)
 
     df_new = process_external_dataset_lunghini(df=df_lunghini_with_cas, class_df=class_df, env_smiles_lunghini=env_smiles_lunghini)
     df_new = df_new[["cas", "smiles", "y_true"]].copy()
@@ -1147,7 +1137,6 @@ def create_classification_data_based_on_regression_data(
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:  # reg_df MUST be without speciation for it to work propperly
     df_included = reg_df_remove_studies_not_to_consider(reg_df)
     df_labelled = label_data_based_on_percentage(df_included)
-    # df_labelled = dixons_q_outlier_detection_removal_huang_zhang(df_labelled)
 
     columns = ["cas", "smiles", "principle", "biodegradation_percent", "y_true", "inchi_from_smiles"]
     df_class = pd.DataFrame(data=df_labelled.copy(), columns=columns)
@@ -1155,6 +1144,8 @@ def create_classification_data_based_on_regression_data(
     df_multiples, df_singles, df_removed_due_to_variance = assign_group_label_and_drop_replicates(
         df=df_class, by_column="inchi_from_smiles"
     )
+    
+    log.info("Substances removed due to variance", num_substances=df_removed_due_to_variance.inchi_from_smiles.nunique())
     assert len(df_multiples) + len(df_singles) + df_removed_due_to_variance["inchi_from_smiles"].nunique() == df_class["inchi_from_smiles"].nunique()
 
     if with_lunghini:
@@ -1167,13 +1158,11 @@ def create_classification_data_based_on_regression_data(
         df_singles = pd.concat([df_singles, df_lunghini_additional], axis=0)
         df_singles.reset_index(inplace=True, drop=True)
 
-    df_class = pd.concat([df_multiples, df_singles], axis=0) # Here we just take the labels for the substances with one study result
+    df_class = pd.concat([df_multiples, df_singles], axis=0)
     df_class = replace_multiple_cas_for_one_inchi(df=df_class, prnt=prnt)
     df_class.drop(["principle", "biodegradation_percent"], axis=1, inplace=True)
     df_class.reset_index(inplace=True, drop=True)
 
-    log.info("Entries in df_class_multiple: ", df_class_multiple=len(df_multiples))
-    log.info("Entries in df_removed_due_to_variance: ", df_removed_due_to_variance=len(df_removed_due_to_variance))
     return df_class, df_removed_due_to_variance
 
 
@@ -1225,34 +1214,6 @@ def create_input_regression(
     return x_array
 
 
-def convert_to_maccs_fingerprints(df: pd.DataFrame) -> pd.DataFrame:
-    # 166 bit fingerprint
-    df = df.copy()
-    mols = [AllChem.MolFromSmiles(smiles) for smiles in df["smiles"]]
-    df["fingerprint"] = [GetMACCSKeysFingerprint(mol) for mol in mols]
-
-    return df
-
-def convert_to_rdk_fingerprints(df: pd.DataFrame) -> pd.DataFrame:
-    # calculate 2048 bit RDK fingerprint
-    df = df.copy()
-    mols = [AllChem.MolFromSmiles(smiles) for smiles in df["smiles"]]
-    df["fingerprint"] = [Chem.RDKFingerprint(mol) for mol in mols]
-    return df
-
-def convert_to_pubchem_fingerprints(df: pd.DataFrame) -> pd.DataFrame:
-    # calculate 881 bit PubChem fingerprint
-    def create_x_class(row) -> np.ndarray:
-        smiles = row["smiles"]
-        fingerprint_dict = from_smiles(smiles, fingerprints=True, descriptors=False)
-        fp = [int(bit) for bit in fingerprint_dict.values()]
-        return np.array(fp)
-
-    x_class = df.apply(create_x_class, axis=1).to_list()
-
-    return x_class
-
-
 def encode_categorical_data(df: pd.DataFrame) -> pd.DataFrame:
     """Encode categorical data using principles of the OrdinalEncoder()"""
     cat_dict_guideline = {
@@ -1294,21 +1255,40 @@ def bit_vec_to_lst_of_lst(df: pd.DataFrame, include_speciation: bool):
         record_fp = np.array(row["fingerprint"]).tolist()
         return record_fp + speciation
 
-    x_class = df.apply(create_x_class, axis=1).to_list()
+    x_class = df.apply(create_x_class, axis=1)
+    x_class = x_class.to_list()
     return x_class
 
-def create_input_classification(df_class: pd.DataFrame, include_speciation: bool, fingerprint_type="MACCS") -> np.ndarray: # TODO change to MACCS
+
+def create_input_classification(df_class: pd.DataFrame, include_speciation: bool) -> np.ndarray:
     """Function to create fingerprints and put fps into one array that can than be used as one feature for model training."""
-    if fingerprint_type=="MACCS":
-        df = convert_to_maccs_fingerprints(df_class)
-        x_class = bit_vec_to_lst_of_lst(df, include_speciation)
-    elif fingerprint_type=="RDK":
-        df = convert_to_rdk_fingerprints(df_class)
-        x_class = bit_vec_to_lst_of_lst(df, include_speciation)
-    elif fingerprint_type=="PubChem":
-        x_class = convert_to_pubchem_fingerprints(df_class)
+    df = convert_to_maccs_fingerprints(df_class)
+    x_class = bit_vec_to_lst_of_lst(df, include_speciation)
     x_array = np.array(x_class, dtype=object)
     return x_array
+
+
+def convert_to_morgan_fingerprints(df: pd.DataFrame) -> pd.DataFrame:
+    # 1024 bit fingerprint
+    df = df.copy()
+    mols = [AllChem.MolFromSmiles(smiles) for smiles in df["smiles"]]
+    df["fingerprint"] = [AllChem.GetMorganFingerprintAsBitVect(mol, 2, nBits=1024) for mol in mols] # Possible nBits are 1024, 2048, 4096
+    return df
+
+def convert_to_maccs_fingerprints(df: pd.DataFrame) -> pd.DataFrame:
+    # 166 bit fingerprint
+    df = df.copy()
+    mols = [AllChem.MolFromSmiles(smiles) for smiles in df["smiles"]]
+    df["fingerprint"] = [GetMACCSKeysFingerprint(mol) for mol in mols]
+    return df
+
+def convert_to_rdk_fingerprints(df: pd.DataFrame) -> pd.DataFrame:
+    # calculate 2048 bit RDK fingerprint
+    df = df.copy()
+    mols = [AllChem.MolFromSmiles(smiles) for smiles in df["smiles"]]
+    df["fingerprint"] = [Chem.RDKFingerprint(mol) for mol in mols]
+    return df
+
 
 
 def get_speciation_col_names() -> List[str]:
@@ -1531,83 +1511,17 @@ def get_df_with_unique_cas(df: pd.DataFrame) -> pd.DataFrame:
 def get_class_datasets() -> Dict[str, pd.DataFrame]:
     _, _, df_class = load_class_data_paper()
     curated_scs = pd.read_csv("datasets/curated_data/class_curated_scs.csv", index_col=0)
-    biowin = pd.read_csv("datasets/curated_data/class_curated_scs_biowin.csv", index_col=0)
+    curated_biowin = pd.read_csv("datasets/curated_data/class_curated_biowin.csv", index_col=0)
 
-    biowin_readded = pd.read_csv(
-        "datasets/curated_data/class_curated_scs_biowin_readded.csv", index_col=0
+    curated_final = pd.read_csv(
+        "datasets/curated_data/class_curated_final.csv", index_col=0
     )
     return {
         "df_paper": df_class,
         "df_curated_scs": curated_scs,
-        "df_curated_scs_biowin": biowin,
-        "df_curated_scs_biowin_readded": biowin_readded,
+        "df_curated_biowin": curated_biowin,
+        "df_curated_final": curated_final,
     }
-
-
-def get_regression_datasets() -> Dict[str, pd.DataFrame]:
-    reg = load_regression_df()
-    curated_scs = load_regression_df_curated_scs_no_metal()
-    biowin = pd.read_csv("datasets/curated_data/reg_curated_scs_biowin.csv", index_col=0)
-    biowin_readded = pd.read_csv(
-        "datasets/curated_data/reg_curated_scs_biowin_readded.csv", index_col=0
-    )
-    name_to_df = {
-        "df_paper": reg,
-        "df_curated_scs": curated_scs,
-        "df_curated_scs_biowin": biowin,
-        "df_curated_scs_biowin_readded": biowin_readded,
-    }
-
-    for name, df in name_to_df.items():
-        name_to_df[name] = convert_regression_df_to_input(df=df)
-
-    return name_to_df
-
-
-def get_comparison_datasets_regression(mode: str, include_speciation: bool) -> Dict[str, pd.DataFrame]:
-    datasets = get_regression_datasets()
-    df_biowin = pd.read_csv("datasets/curated_data/reg_paper_biowin.csv", index_col=0)
-    df_curated_s_biowin = pd.read_csv(
-        "datasets/curated_data/reg_curated_s_biowin.csv", index_col=0
-    )
-    df_curated_scs_biowin = pd.read_csv(
-        "datasets/curated_data/reg_curated_scs_biowin.csv", index_col=0
-    )
-
-    name_to_df = {
-        "df_paper": datasets["df_paper"],
-        "df_curated_s": datasets["df_curated_s"],
-        "df_curated_scs": datasets["df_curated_scs"],
-        "df_paper_biowin": df_biowin,
-        "df_curated_s_biowin": df_curated_s_biowin,
-        "df_curated_scs_biowin": df_curated_scs_biowin,
-    }
-    for name, df in name_to_df.items():
-        name_to_df[name] = convert_regression_df_to_input(df=df)
-    return name_to_df
-
-
-def get_comparison_datasets_classification(
-    mode: str, include_speciation: bool, with_lunghini: bool, create_new: bool
-) -> Dict[str, pd.DataFrame]:
-    datasets = get_class_datasets()
-    df_biowin = pd.read_csv("datasets/curated_data/class_paper_biowin.csv", index_col=0)
-    df_curated_s_biowin = pd.read_csv(
-        "datasets/curated_data/class_curated_s_biowin.csv", index_col=0
-    )
-    df_curated_scs_biowin = pd.read_csv(
-        "datasets/curated_data/class_curated_scs_biowin.csv", index_col=0
-    )
-
-    name_to_df = {
-        "df_paper": datasets["df_paper"],
-        "df_curated_s": datasets["df_curated_s"],
-        "df_curated_scs": datasets["df_curated_scs"],
-        "df_paper_biowin": df_biowin,
-        "df_curated_s_biowin": df_curated_s_biowin,
-        "df_curated_scs_biowin": df_curated_scs_biowin,
-    }
-    return name_to_df
 
 
 def create_dfs_for_curated_data_analysis() -> Tuple[
@@ -1616,31 +1530,20 @@ def create_dfs_for_curated_data_analysis() -> Tuple[
     pd.DataFrame,
     pd.DataFrame,
     pd.DataFrame,
-    pd.DataFrame,
 ]:
-    reg_curated_scs = load_regression_df_curated_scs_no_metal()
-    reg_curated_scs_biowin = pd.read_csv(
-        "datasets/curated_data/reg_curated_scs_biowin.csv", index_col=0
-    )
-    reg_curated_scs_biowin_readded = pd.read_csv(
-        "datasets/curated_data/reg_curated_scs_biowin_readded.csv", index_col=0
-    )
 
     class_curated_scs = pd.read_csv("datasets/curated_data/class_curated_scs.csv", index_col=0)
-    class_curated_scs_biowin = pd.read_csv(
-        "datasets/curated_data/class_curated_scs_biowin.csv", index_col=0
-    )
-    class_curated_scs_biowin_readded = pd.read_csv(
-        "datasets/curated_data/class_curated_scs_biowin_readded.csv", index_col=0
-    )
+    class_curated_biowin = pd.read_csv("datasets/curated_data/class_curated_biowin.csv", index_col=0)
+    class_curated_biowin_problematic = pd.read_csv("datasets/curated_data/class_curated_biowin_problematic.csv", index_col=0)
+    class_curated_final = pd.read_csv("datasets/curated_data/class_curated_final.csv", index_col=0)
+    class_curated_final_removed = pd.read_csv("datasets/curated_data/class_curated_final_removed.csv", index_col=0)
 
     return (
-        reg_curated_scs,
-        reg_curated_scs_biowin,
-        reg_curated_scs_biowin_readded,
         class_curated_scs,
-        class_curated_scs_biowin,
-        class_curated_scs_biowin_readded,
+        class_curated_biowin,
+        class_curated_biowin_problematic,
+        class_curated_final,
+        class_curated_final_removed,
     )
 
 
@@ -1663,9 +1566,7 @@ def load_opera_data() -> Tuple[pd.DataFrame, pd.DataFrame]:
     df_opera = replace_multiple_cas_for_one_inchi(df=df_opera, prnt=True)
     df_opera, _ = remove_organo_metals_function(df=df_opera, smiles_column="smiles")
 
-    df_readded = pd.read_csv(
-        "datasets/curated_data/class_curated_scs_biowin_readded.csv", index_col=0
-    )
+    df_readded = pd.read_csv("datasets/curated_data/class_curated_final.csv", index_col=0)
     _, _, df_class_huang = load_class_data_paper()
     df_class_huang = remove_smiles_with_incorrect_format(df=df_class_huang, col_name_smiles="smiles")
     df_class_huang = openbabel_convert(
@@ -1771,7 +1672,7 @@ def create_biowin_data() -> pd.DataFrame:
 def remove_biowin_entries_that_are_in_huang_class_and_readded(df_biowin_env: pd.DataFrame) -> pd.DataFrame:
     _, _, df_huang_class = load_class_data_paper()
     df_readded = pd.read_csv(
-        "datasets/curated_data/class_curated_scs_biowin_readded.csv", index_col=0
+        "datasets/curated_data/class_curated_final.csv", index_col=0
     )
     df_huang_class = remove_smiles_with_incorrect_format(df=df_huang_class, col_name_smiles="smiles")
     df_huang_class = openbabel_convert(
@@ -2041,7 +1942,7 @@ def get_only_data_inside_AD_of_Huang_and_readded(df_test: pd.DataFrame, df_name:
     if mode == "class":
         _, _, df_huang = load_class_data_paper()
         df_readded = pd.read_csv(
-            "datasets/curated_data/class_curated_scs_biowin_readded.csv", index_col=0
+            "datasets/curated_data/class_curated_final.csv", index_col=0
         )
     elif mode == "reg":
         df_huang = load_regression_df()
@@ -2069,7 +1970,7 @@ def find_echa_additional(
     df_echa_additional: pd.DataFrame, df_echa_additional_env: pd.DataFrame
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     df_readded = pd.read_csv(
-        "datasets/curated_data/class_curated_scs_biowin_readded.csv", index_col=0
+        "datasets/curated_data/class_curated_final.csv", index_col=0
     )
     df_echa_additional_env = df_echa_additional_env[
         ~df_echa_additional_env["inchi_from_smiles"].isin(df_readded["inchi_from_smiles"])
@@ -2504,9 +2405,58 @@ def get_maccs_names() -> List[str]:
     return maccs_names
 
 
+def get_labels_colors_progress() -> Tuple[List[str], List[str]]:
+    labels = [
+        "Huang-Dataset \n reported",
+        "Huang-Dataset \n replicated",
+        "$\mathregular{Curated_{SCS}}$",
+        "$\mathregular{Curated_{BIOWIN}}$",
+        "$\mathregular{Curated_{FINAL}}$",
+    ]
+    colors = [
+        "white",
+        "plum",
+        "royalblue",
+        "lightgreen",
+        "seagreen",
+    ]
+    return labels, colors
 
 
+def plot_results_with_standard_deviation(
+    all_data: List[np.ndarray],
+    labels: List[str],
+    colors: List[str],
+    nsplits: int,
+    title: str,
+    seed: int,
+    plot_with_paper: bool,
+    save_ending: str,
+    test_set_name: str,
+) -> None:
 
+    plt.figure(figsize=(15, 5))
 
+    bplot = plt.boxplot(all_data, vert=True, patch_artist=True, labels=labels, meanline=True, showmeans=True)
+
+    for patch, color in zip(bplot["boxes"], colors):
+        patch.set_facecolor(color)
+
+    if plot_with_paper:
+        plt.plot(1, np.mean(all_data[0]), marker="o", markersize=14)
+
+    plt.xlabel("Datasets", fontsize=22)
+    ylabel = f"Balanced accuracy (%)" if title == "Balanced_accuracy" else title
+    plt.ylabel(ylabel, fontsize=22)
+
+    plt.xticks(fontsize=18)
+    plt.yticks(fontsize=18)
+    plt.tight_layout()
+    plt.grid(axis="y")
+
+    plt.savefig(
+        f"figures/{title}_seed{seed}_paper_hyperparameter_{save_ending}_test_set_{test_set_name}.png"
+    )
+    plt.close()
 
 

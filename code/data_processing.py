@@ -92,7 +92,7 @@ def replace_smiles_with_smiles_gluege(df: pd.DataFrame, df_checked: pd.DataFrame
     df[["smiles"]] = df.apply(get_smiles_ec_num, axis=1)
     log.info(
         "For this many data points the InChI from the SMILES from the paper did not match the InChI from the SMILES from Gluege et al.",
-        no_match=len(smiles_huang_gluege_dont_match),
+        no_match=len(smiles_huang_gluege_dont_match), no_match_substances=len(set(smiles_huang_gluege_dont_match))
     )
     return df
 
@@ -187,7 +187,7 @@ def remove_studies_where_registered_substance_dont_match_reference_substance(
 
     df_a_full["to_remove"] = df_a_full.apply(remove_problematic_studies, axis=1)
     df_removed_studies = df_a_full[df_a_full["to_remove"] == True].copy()
-    log.info("Removed studies in df_a because reference CAS didn't match CAS", removed=len(df_removed_studies))
+    log.info("Removed studies in df_a because reference CAS didn't match CAS", removed=len(df_removed_studies), removed_substances=df_removed_studies.cas.nunique())
     df_a_full_clean = df_a_full[df_a_full["to_remove"] == False].copy()
     log.info(
         "Entries in df_a_full_clean without problematic studies",

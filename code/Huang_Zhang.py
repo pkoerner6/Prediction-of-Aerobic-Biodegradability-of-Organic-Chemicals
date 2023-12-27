@@ -21,11 +21,10 @@ from processing_functions import create_input_classification
 from processing_functions import load_and_process_echa_additional
 from processing_functions import convert_regression_df_to_input
 from ml_functions import print_class_results
-from ml_functions import run_XGBClassifier_Huang_Zhang
-from ml_functions import run_XGBRegressor_Huang_Zhang
+from ml_functions import train_XGBClassifier
+from ml_functions import train_XGBRegressor_Huang_Zhang
 from ml_functions import get_class_results
 from ml_functions import analyze_regression_results_and_plot
-from ml_functions import plot_classification_bar
 from ml_functions import get_Huang_Zhang_regression_parameters
 from ml_functions import get_balanced_data_adasyn
 
@@ -150,12 +149,6 @@ def run_xgbclassifier_on_additional_echa_data(
         specificity=specificity,
         f1=f1,
     )
-    plot_classification_bar(
-        df=df_additional,
-        accuracy=accuracy,
-        figure_name=f"{figure_name}_tested_on_additional",
-        figure_title=f"{figure_title} on external ECHA data",
-    )
 
 
 def create_regression_input(df: pd.DataFrame, include_speciation: bool) -> pd.DataFrame:
@@ -227,7 +220,7 @@ def run_regression() -> None:
         log.info(
             f" \n Newly trained regression model trained on paper data, {args.nsplits}-fold, tested on paper test dataset"
         )
-        run_XGBRegressor_Huang_Zhang(
+        train_XGBRegressor_Huang_Zhang(
             df=df_paper_reg,
             column_for_grouping="smiles",
             random_seed=args.random_state,
@@ -276,7 +269,7 @@ def run_classification() -> None:
         log.info(
             f" \n Newly trained classification model trained on paper data, {args.nsplits}-fold, tested on test set"
         )
-        run_XGBClassifier_Huang_Zhang(
+        train_XGBClassifier(
             df=df_paper_class,
             random_seed=args.random_state,
             nsplits=args.nsplits,

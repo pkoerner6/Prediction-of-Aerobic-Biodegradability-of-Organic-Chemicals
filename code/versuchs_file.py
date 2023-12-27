@@ -26,7 +26,7 @@ from processing_functions import load_checked_organics6
 from processing_functions import get_inchi_main_layer
 from processing_functions import load_regression_df
 
-df_regression = pd.read_excel("datasets/Huang_Zhang_RegressionDataset.xlsx", index_col=0)
+df_regression = pd.read_excel("datasets/external_data/Huang_Zhang_RegressionDataset.xlsx", index_col=0)
 df_regression.rename(
     columns={
         "Substance Name": "name",
@@ -182,6 +182,7 @@ print("Unique CAS from classification data that are in Gluege data: ", len(subst
 
 ##### Analyse variance among study results 
 # df = load_regression_df()
+print(" ")
 df = pd.read_csv("datasets/data_processing/reg_improved_no_metal_env_smiles.csv", index_col=0)
 df = remove_smiles_with_incorrect_format(df=df, col_name_smiles="smiles")
 df = openbabel_convert(
@@ -192,8 +193,10 @@ df = openbabel_convert(
 )
 
 print("Entries in reg df: ", len(df))
+print("Unique inchi in original reg df: ", df["inchi_from_smiles"].nunique())
 df = df[df["time_day"] == 28.0]
-print("Entries in reg df with studies for 28 days: ", len(df))
+df = df[df["endpoint"] == "ready"]
+print("Entries in reg df with studies for 28 days and endpoint ready: ", len(df))
 print("Unique inchi in reg df: ", df["inchi_from_smiles"].nunique())
 
 counted_duplicates = df.groupby(df["inchi_from_smiles"].tolist(), as_index=False).size().sort_values(by="size", ascending=False)

@@ -77,33 +77,32 @@ def get_embeddings(model, smiles, tokenizer, batch_size=64):
     return torch.cat(embeddings)
 
 
-def create_features(dataframes: Dict[str, pd.DataFrame], tokenizer, lm):
+def create_features_molformer(df: pd.DataFrame, df_name: str, tokenizer, lm) -> pd.DataFrame:
     def canonicalize(s):
         return Chem.MolToSmiles(Chem.MolFromSmiles(s), canonical=True, isomericSmiles=False)
 
-    for df_name, df in datasets.items():
-        smiles = df.smiles.apply(canonicalize)
-        embeddings = get_embeddings(lm, smiles, tokenizer).numpy()
-        df_with_fp = df.copy()
-        df_with_fp["fingerprint"] = [embedding.tolist() for embedding in embeddings]
-        df_with_fp.to_csv(f"datasets/different_features/{df_name}_molformer_embeddings.csv")
+    smiles = df.smiles.apply(canonicalize)
+    embeddings = get_embeddings(lm, smiles, tokenizer).numpy()
+    df_with_fp = df.copy()
+    df_with_fp["fingerprint"] = [embedding.tolist() for embedding in embeddings]
+    df_with_fp.to_csv(f"datasets/different_features/{df_name}_molformer_embeddings.csv")
+    return df_with_fp
 
 
 def load_dfs() -> Dict[str, pd.DataFrame]:
     df_class = pd.read_csv("datasets/external_data/class_all.csv", index_col=0)
     curated_scs = pd.read_csv("datasets/curated_data/class_curated_scs.csv", index_col=0)
-    biowin = pd.read_csv("datasets/curated_data/class_curated_scs_biowin.csv", index_col=0)
+    biowin = pd.read_csv("datasets/curated_data/class_curated_biowin.csv", index_col=0)
 
-    biowin_readded = pd.read_csv(
-        "datasets/curated_data/class_curated_scs_biowin_readded.csv", index_col=0
+    curated_final = pd.read_csv(
+        "datasets/curated_data/class_curated_final.csv", index_col=0
     )
-    df_multiple = pd.read_csv("datasets/curated_data/class_curated_scs_biowin_readded_multiple.csv", index_col=0)
+    df_removed = pd.read_csv("datasets/curated_data/class_curated_final_removed.csv", index_col=0)
+    df_removed = df_removed[df_removed["principle"].isnull()]
+    df_removed.reset_index(inplace=True, drop=True)
     datasets = {
-        "class_paper": df_class,
         "class_curated_scs": curated_scs,
-        "class_curated_scs_biowin": biowin,
-        "class_curated_scs_biowin_readded": biowin_readded,
-        "class_curated_scs_biowin_readded_multiple": df_multiple
+        "class_curated_final": curated_final,
     }
     for df_name, df in datasets.items():
         df.reset_index(inplace=True, drop=True)
@@ -115,6 +114,6 @@ if __name__ == "__main__":
 
     datasets = load_dfs()
 
-    create_features(datasets, tokenizer, lm)
+    create_features_molformer(datasets, tokenizer, lm)
 
 
