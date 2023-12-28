@@ -1,3 +1,5 @@
+"""Needs to be run with venv 'molformer_venv'"""
+
 import argparse
 import pandas as pd
 import numpy as np
@@ -5,6 +7,7 @@ import structlog
 import sys
 import os
 
+from rdkit import Chem
 import torch
 import yaml
 from tqdm import tqdm
@@ -18,7 +21,7 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from lazypredict.Supervised import LazyClassifier, LazyRegressor
 from sklearn.utils import all_estimators
-from sklearn.base import RegressorMixin
+from sklearn.base import ClassifierMixin
 import lightgbm as lgbm
 from xgboost import XGBRegressor, XGBClassifier
 from sklearn.ensemble import ExtraTreesClassifier
@@ -60,7 +63,7 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument(
     "--run_lazy",
-    default=False,
+    default=True,
     action=argparse.BooleanOptionalAction,
     help="Whether to run lazy regressor and classifier",
 )
@@ -75,12 +78,6 @@ parser.add_argument(
     type=int,
     default=5,
     help="Select the number of splits for cross validation",
-)
-parser.add_argument(
-    "--plot",
-    default=True,
-    action=argparse.BooleanOptionalAction,
-    help="Whether plot the results",
 )
 parser.add_argument(
     "--train_new",
@@ -209,7 +206,37 @@ def get_classification_model_input(df: pd.DataFrame, df_test: pd.DataFrame) -> T
 def run_lazy_classifier(df: pd.DataFrame, df_test: pd.DataFrame) -> None:
     x_balanced, y_balanced, x_test, y_test = get_classification_model_input(df, df_test)
 
-    clf = LazyClassifier(predictions=True, verbose=0)
+    removed_classifiers = [
+        "ClassifierChain",
+        "ComplementNB",
+        "MultiOutputClassifier", 
+        "MultinomialNB", 
+        "OneVsOneClassifier",
+        "OneVsRestClassifier",
+        "OutputCodeClassifier",
+        "RadiusNeighborsClassifier",
+        "VotingClassifier",
+        "CategoricalNB",
+        "StackingClassifier",
+    ]
+
+    classifiers = [
+        est[1]
+        for est in all_estimators()
+        if (issubclass(est[1], ClassifierMixin) and (est[0] not in removed_classifiers))
+    ]
+
+    classifiers.append(XGBClassifier)
+    # classifiers.append(lgbm.LGBMClassifier)
+
+    clf = LazyClassifier(
+        verbose=0,
+        ignore_warnings=False,
+        custom_metric=None,
+        predictions=True,
+        classifiers=classifiers,
+    )
+
     models, _ = clf.fit(x_balanced, x_test, y_balanced, y_test)
     log.info(models)
 

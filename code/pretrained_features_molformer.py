@@ -114,6 +114,6 @@ if __name__ == "__main__":
 
     datasets = load_dfs()
 
-    create_features_molformer(datasets, tokenizer, lm)
+    create_features_molformer(datasets["class_curated_scs"], "class_curated_scs", tokenizer, lm)
 
 

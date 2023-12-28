@@ -69,7 +69,6 @@ def test_GraphConvModel():
   df = pd.read_csv("datasets/curated_data/class_curated_final.csv", index_col=0)
   train_df, test_df = train_test_split(df, test_size=0.2, random_state=args.random_seed)
 
-  # Function to generate 3D coordinates
   with dc.utils.UniversalNamedTemporaryFile(mode='w') as tmpfile:
     train_df.to_csv(tmpfile.name)
     featurizer = dc.feat.ConvMolFeaturizer(use_chirality=True)
