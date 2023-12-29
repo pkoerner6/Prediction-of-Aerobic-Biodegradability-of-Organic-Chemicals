@@ -51,6 +51,7 @@ parser.add_argument(
     "--model_selection",
     type=str,
     choices=["retrained", "paper", "both"],
+    default="both",
     help="Which model to use",
 )
 parser.add_argument("--random_state", type=int, default=42)
@@ -108,13 +109,12 @@ def run_xgbregressor_on_additional_echa_data(
     figure_name: str,
     figure_title: str,
 ) -> None:
-    df_additional, _, _, _ = load_and_process_echa_additional()
+    df_additional, _, _, _ = load_and_process_echa_additional(include_speciation=args.chemical_speciation_included)
     log.info("Entries in additional regression echa data", df_additional_regression=len(df_additional))
     if args.data_info:
         log.info("Analysing additional ECHA data for regression")
         info_dataset(df_additional, dataset_type="regression", inchi_col_name="inchi_from_smiles")
-    print(df_additional.columns) # TODO
-    x_input = create_input_regression(df=df_additional, include_speciation=False) # True does not work! Interesting because that means the provided model was trained without the extra features
+    x_input = create_input_regression(df=df_additional, include_speciation=args.chemical_speciation_included) #False) # True does not work! Interesting because that means the provided model was trained without the extra features
     df_additional["prediction"] = model.predict(x_input)
     analyze_regression_results_and_plot(
         df=df_additional,
@@ -128,7 +128,7 @@ def run_xgbclassifier_on_additional_echa_data(
     figure_name: str,
     figure_title: str,
 ) -> None:
-    _, _, df_additional, _ = load_and_process_echa_additional()
+    _, _, df_additional, _ = load_and_process_echa_additional(include_speciation=args.chemical_speciation_included)
     log.info("Number of additional datapoints for classification: ", entries=len(df_additional))
 
     if args.data_info:
@@ -138,6 +138,7 @@ def run_xgbclassifier_on_additional_echa_data(
             dataset_type="classification",
             inchi_col_name="inchi_from_smiles",
         )
+    print(df_additional.columns)
     x_input = create_input_classification(df_additional, include_speciation=args.chemical_speciation_included)
     df_additional["prediction"] = model.predict(x_input)
     accuracy, f1, sensitivity, specificity = get_class_results(
@@ -227,7 +228,7 @@ def run_regression() -> None:
             nsplits=args.nsplits,
             include_speciation=args.chemical_speciation_included,
             fixed_testset=False,
-            df_smallest=df_paper_reg,
+            df_test=df_paper_reg,
             dataset_name="df_regression_paper",
         )
         log.info(" \n Newly trained regression model trained on all paper data, tested on additional data")
@@ -275,8 +276,7 @@ def run_classification() -> None:
             nsplits=args.nsplits,
             use_adasyn=True,
             include_speciation=args.chemical_speciation_included,
-            fixed_testset=False,
-            df_smallest=df_paper_class,
+            df_test=df_paper_class,
             dataset_name="df_classification_paper",
         )
         log.info(" \n Newly trained classification model trained on all paper data, tested on additional data")

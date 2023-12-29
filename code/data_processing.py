@@ -23,10 +23,10 @@ from processing_functions import remove_organo_metals_function
 from processing_functions import get_smiles_from_cas_pubchempy
 from processing_functions import get_smiles_from_cas_comptox
 from processing_functions import get_info_cas_common_chemistry
-from processing_functions import replace_smiles_with_env_relevant_smiles
+from processing_functions import replace_smiles_with_smiles_with_chemical_speciation
 from processing_functions import replace_multiple_cas_for_one_inchi
 from processing_functions import load_regression_df
-from processing_functions import load_checked_organics6
+from processing_functions import load_gluege_data
 from processing_functions import check_number_of_components
 from processing_functions import openbabel_convert_smiles_to_inchi_with_nans
 from processing_functions import get_inchi_main_layer
@@ -470,7 +470,7 @@ def get_dfs() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     cols += get_speciation_col_names()
     df = df[cols]
     df_unique_cas = get_df_with_unique_cas(df)
-    df_checked = load_checked_organics6()
+    df_checked = load_gluege_data()
     return df, df_unique_cas, df_checked
 
 
@@ -589,12 +589,12 @@ def process_full_dataset(
     log.info("Replacing multiple CAS for one InChI")
     df_full = replace_multiple_cas_for_one_inchi(df_full, prnt=False)
 
-    df_full_with_env_smiles, _ = replace_smiles_with_env_relevant_smiles(df_full.copy())
-    log.info("Dataset size after replacing SMILES with chemical speciation", entries=len(df_full_with_env_smiles))
+    df_full_with_chemical_speciation, _ = replace_smiles_with_smiles_with_chemical_speciation(df_full.copy())
+    log.info("Dataset size after replacing SMILES with chemical speciation", entries=len(df_full_with_chemical_speciation))
 
     df_full, _ = remove_organo_metals_function(df=df_full, smiles_column="smiles")
-    df_full_with_env_smiles, _ = remove_organo_metals_function(df=df_full_with_env_smiles, smiles_column="smiles")
-    return df_full, df_full_with_env_smiles
+    df_full_with_chemical_speciation, _ = remove_organo_metals_function(df=df_full_with_chemical_speciation, smiles_column="smiles")
+    return df_full, df_full_with_chemical_speciation
 
 
 def aggregate_duplicates(df: pd.DataFrame):
@@ -650,7 +650,7 @@ if __name__ == "__main__":
     ) = process_data_not_checked_by_gluege(df_b=df_b)
 
     log.info(" \n Full dataset")
-    df_full, df_full_with_env_smiles = process_full_dataset(
+    df_full, df_full_with_chemical_speciation = process_full_dataset(
         df_a_full=df_a_full,
         df_b_full_original=df_b_full_original,
         df_one_component_smiles_found=df_one_component_smiles_found,
@@ -671,21 +671,21 @@ if __name__ == "__main__":
     ]
     cols_to_keep += get_speciation_col_names()
     df_full = df_full[cols_to_keep]
-    df_full_with_env_smiles = df_full_with_env_smiles[cols_to_keep]
+    df_full_with_chemical_speciation = df_full_with_chemical_speciation[cols_to_keep]
 
     df_full_agg = aggregate_duplicates(df=df_full)
     log.info("Entries in df_full_agg after aggregating", entries=len(df_full_agg))
-    df_full_with_env_smiles_agg = aggregate_duplicates(df=df_full_with_env_smiles)
-    log.info("Entries in df_full_with_env_smiles_agg after aggregating", entries=len(df_full_with_env_smiles_agg))
+    df_full_with_chemical_speciation_agg = aggregate_duplicates(df=df_full_with_chemical_speciation)
+    log.info("Entries in df_full_with_chemical_speciation_agg after aggregating", entries=len(df_full_with_chemical_speciation_agg))
 
     dfs = {
         "df_full": df_full,
         "df_full_agg": df_full_agg,
-        "df_full_with_env_smiles": df_full_with_env_smiles,
-        "df_full_with_env_smiles_agg": df_full_with_env_smiles_agg,
+        "df_full_with_chemical_speciation": df_full_with_chemical_speciation,
+        "df_full_with_chemical_speciation_agg": df_full_with_chemical_speciation_agg,
     }
     for df_name, df in dfs.items():
         log.info(f"Entries in {df_name}", entries=len(df))
 
     df_full_agg.to_csv("datasets/data_processing/reg_curated_s_no_metal.csv")
-    df_full_with_env_smiles_agg.to_csv("datasets/data_processing/reg_curated_scs_no_metal.csv")
+    df_full_with_chemical_speciation_agg.to_csv("datasets/data_processing/reg_curated_scs_no_metal.csv")

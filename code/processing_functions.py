@@ -17,11 +17,9 @@ import cirpy
 from rdkit import Chem
 from rdkit import RDLogger
 from rdkit.Chem import AllChem
-from rdkit.Chem import PandasTools
 from rdkit.Chem.rdMolDescriptors import GetMACCSKeysFingerprint
 from pyADA import ApplicabilityDomain
 from pubchempy import get_compounds
-from padelpy import from_smiles
 import urllib.request
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -79,35 +77,6 @@ def label_data_based_on_percentage(df: pd.DataFrame) -> pd.DataFrame:
         1,
         0,
     )
-    return df
-
-
-def assign_group_label_and_drop_replicates_based_on_mean_biodegradation(
-    df: pd.DataFrame, by_column: str
-) -> pd.DataFrame:
-    df["threshold"] = np.where(df["principle"] == "DOC Die Away", 0.7, 0.6)
-    counted_duplicates = (
-        df.groupby(df[by_column].tolist(), as_index=False).size().sort_values(by="size", ascending=False)
-    )
-
-    replicates_df = counted_duplicates[counted_duplicates["size"] > 1]
-    replicates = replicates_df["index"].tolist()
-    indices_to_drop: List[int] = []
-    for item in replicates:
-        current_group = df.loc[df[by_column] == item]
-        current_group_agg = current_group[["biodegradation_percent", "threshold"]].aggregate(["mean"])
-        mean_biodegradation = current_group_agg.at["mean", "biodegradation_percent"]
-        mean_threshold = current_group_agg.at["mean", "threshold"]
-        label = 1 if mean_biodegradation >= mean_threshold else 0
-        for i, indx in enumerate(list(current_group.index)):
-            if i == 0:
-                df.loc[indx, "threshold"] = mean_threshold
-                df.loc[indx, "biodegradation_percent"] = mean_biodegradation
-                df.loc[indx, "y_true"] = label
-            else:
-                indices_to_drop.append(indx)
-                df = df.drop(index=indx)  # Remove other rows in main df
-    df.reset_index(inplace=True, drop=True)
     return df
 
 
@@ -395,7 +364,21 @@ def remove_organo_metals_function(df: pd.DataFrame, smiles_column: str) -> Tuple
     df["organo_metal"] = df.apply(remove_organo_metals_by_row, axis=1)
     organo_metals = df[df["organo_metal"] == True]
     none_organo_metals = df[df["organo_metal"] == False]
-    log.info("Number of organo-metals found", organo_metals_substances=organo_metals.inchi_from_smiles.nunique())
+    organo_metals = remove_smiles_with_incorrect_format(df=organo_metals, col_name_smiles="smiles")
+    organo_metals = openbabel_convert(
+        df=organo_metals,
+        input_type="smiles",
+        column_name_input="smiles",
+        output_type="inchi",
+    )
+    none_organo_metals = remove_smiles_with_incorrect_format(df=none_organo_metals, col_name_smiles="smiles")
+    none_organo_metals = openbabel_convert(
+        df=none_organo_metals,
+        input_type="smiles",
+        column_name_input="smiles",
+        output_type="inchi",
+    )
+    log.info("Number of organo-metals found", organo_metals_substances=organo_metals["inchi_from_smiles"].nunique())
     return none_organo_metals, organo_metals
 
 
@@ -446,8 +429,6 @@ def get_comptox(cas_string: str) -> None:
     cas_box = driver.find_elements(By.XPATH, "//label[contains(@for,'CASRN-output')]")[0]
     smiles_box = driver.find_elements(By.XPATH, "//label[contains(@for,'SMILES-output')]")[0]
     inchi_box = driver.find_elements(By.XPATH, "//label[contains(@for,'INCHI_STRING-output')]")[0]
-    ms_smiles_box = driver.find_elements(By.XPATH, "//label[contains(@for,'MS_READY_SMILES-output')]")[0]
-    qsar_smiles_box = driver.find_elements(By.XPATH, "//label[contains(@for,'QSAR_READY_SMILES-output')]")[0]
     mf_box = driver.find_elements(By.XPATH, "//label[contains(@for,'MOLECULAR_FORMULA-output')]")[0]
     am_box = driver.find_elements(By.XPATH, "//label[contains(@for,'AVERAGE_MASS-output')]")[0]
     boxes = [
@@ -455,8 +436,6 @@ def get_comptox(cas_string: str) -> None:
         cas_box,
         smiles_box,
         inchi_box,
-        ms_smiles_box,
-        qsar_smiles_box,
         mf_box,
         am_box,
     ]
@@ -490,8 +469,6 @@ def get_smiles_from_cas_comptox(df: pd.DataFrame) -> pd.DataFrame:
             "FOUND_BY",
             "DTXSID",
             "PREFERRED_NAME",
-            "MS_READY_SMILES",
-            "QSAR_READY_SMILES",
             "AVERAGE_MASS",
         ],
         inplace=True,
@@ -724,7 +701,7 @@ def process_df_biowin(
     return df, df_false
 
 
-def replace_smiles_with_env_relevant_smiles(df_without_env_smiles: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def replace_smiles_with_smiles_with_chemical_speciation(df_without_env_smiles: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     df_checked = pd.read_excel("datasets/substances_with_env_smiles.xlsx", index_col=0)
 
     df_without_env_smiles = openbabel_convert(
@@ -846,13 +823,6 @@ def load_regression_df() -> pd.DataFrame:
     return df_regression
 
 
-def load_regression_df_curated_s_no_metal() -> pd.DataFrame:
-    df_regression = pd.read_csv("datasets/data_processing/reg_curated_s_no_metal.csv", index_col=0)
-    df_regression = df_regression[
-        df_regression["cas"] != "1803551-73-6"
-    ]  # Remove becuase cannot be converted to fingerprint (Explicit valence for atom # 0 F, 2, is greater than permitted)
-    return df_regression
-
 
 def load_regression_df_curated_scs_no_metal() -> pd.DataFrame:
     df_regression = pd.read_csv(
@@ -909,66 +879,6 @@ def load_class_data_paper(
 def reg_df_remove_inherent_only_28_for_classification(df: pd.DataFrame) -> pd.DataFrame:
     df = df[(df["endpoint"] != "inherent") & (df["time_day"] == 28.0)]
     df.reset_index(inplace=True, drop=True)
-    return df
-
-
-def dixons_q_outlier_detection_removal_huang_zhang(df: pd.DataFrame) -> pd.DataFrame:
-    """Find and remove outliers using dixons q test according to this video: https://www.youtube.com/watch?v=K3zxIJm0v70"""
-    """Note that outliers are only removed when only one outlier is present!"""
-    num_samples_to_critical_val: Dict[int, float] = {
-        3: 0.941,
-        4: 0.765,
-        5: 0.642,
-        6: 0.560,
-        7: 0.507,
-        8: 0.468,
-        9: 0.437,
-        10: 0.412,
-        11: 0.392,
-        12: 0.376,
-        13: 0.361,
-        14: 0.349,
-        15: 0.338,
-        16: 0.329,
-        17: 0.320,
-        18: 0.313,
-        19: 0.306,
-        20: 0.300,
-    }
-    indices_of_outliers: List[int] = []
-    counted_duplicates = df.groupby(df["cas"].tolist(), as_index=False).size().sort_values(by="size", ascending=False)
-    df_more_than_3_replicates = counted_duplicates[counted_duplicates["size"] > 3]
-    df_for_dixons = df_more_than_3_replicates[df_more_than_3_replicates["size"] < 27]
-    cas_numbers = list(df_for_dixons["index"])
-    for cas_number in cas_numbers:
-        current_group = df.loc[df["cas"] == cas_number]
-        current_group_sorted = current_group.sort_values(by="biodegradation_percent")
-        current_deg_values = list(
-            current_group_sorted["biodegradation_percent"]
-        )  # get list of degradation values for given cas
-        range = abs(current_deg_values[-1] - current_deg_values[0])
-        if range == 0:
-            continue
-        n = len(current_deg_values)
-        critical_val = num_samples_to_critical_val.get(n, -1.0)
-        if critical_val == -1.0:
-            log.info("No outliers detected!")
-            continue
-        # Check if lowest value is outlier
-        gap_low = current_deg_values[1] - current_deg_values[0]
-        test_stat = gap_low / range
-        if test_stat > critical_val:
-            indices_of_outliers.append(
-                current_group.index[current_group["biodegradation_percent"] == current_deg_values[0]].tolist()[0]
-            )
-        # Check if highest value is outlier
-        gap_high = current_deg_values[-1] - current_deg_values[-2]
-        test_stat = gap_high / range
-        if test_stat > critical_val:
-            indices_of_outliers.append(
-                current_group.index[current_group["biodegradation_percent"] == current_deg_values[-1]].tolist()[0]
-            )
-    df = df.drop(index=indices_of_outliers).reset_index(drop=True)  # Remove rows with outlier in main df
     return df
 
 
@@ -1037,7 +947,7 @@ def process_external_dataset_lunghini(df: pd.DataFrame, class_df: pd.DataFrame, 
     )
     df.rename(columns={"best_cas": "cas"}, inplace=True)
     if env_smiles_lunghini:
-        df, _ = replace_smiles_with_env_relevant_smiles(df_without_env_smiles=df)
+        df, _ = replace_smiles_with_smiles_with_chemical_speciation(df_without_env_smiles=df)
 
     # Find data points for substances not already in class_df
     df_new = df[~df["inchi_from_smiles"].isin(class_df["inchi_from_smiles"])].copy()
@@ -1133,12 +1043,15 @@ def create_classification_data_based_on_regression_data(
     reg_df: pd.DataFrame, 
     with_lunghini: bool, 
     env_smiles_lunghini: bool, 
+    include_speciation: bool,
     prnt: bool
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:  # reg_df MUST be without speciation for it to work propperly
     df_included = reg_df_remove_studies_not_to_consider(reg_df)
     df_labelled = label_data_based_on_percentage(df_included)
 
     columns = ["cas", "smiles", "principle", "biodegradation_percent", "y_true", "inchi_from_smiles"]
+    if include_speciation:
+        columns = columns + get_speciation_col_names()
     df_class = pd.DataFrame(data=df_labelled.copy(), columns=columns)
 
     df_multiples, df_singles, df_removed_due_to_variance = assign_group_label_and_drop_replicates(
@@ -1178,6 +1091,7 @@ def create_classification_biowin(
         reg_df,
         with_lunghini=with_lunghini,
         env_smiles_lunghini=env_smiles_lunghini,
+        include_speciation=False,
         prnt=prnt,
     )
     df_class_biowin, df_class_biowin_problematic = process_df_biowin(
@@ -1320,7 +1234,7 @@ def convert_regression_df_to_input(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def load_checked_organics6() -> pd.DataFrame:
+def load_gluege_data() -> pd.DataFrame:
     df = pd.read_pickle("reach_study_results/RegisteredSubstances_organic6.pkl")
     new_col_names_to_col_names = {
         "CAS_RN": "cas",
@@ -1435,7 +1349,7 @@ def further_processing_of_echa_data(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def load_and_process_echa_additional() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def load_and_process_echa_additional(include_speciation: bool) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     df_reg = load_regression_df()
     df_reg = remove_smiles_with_incorrect_format(df=df_reg, col_name_smiles="smiles")
     df_reg = openbabel_convert(
@@ -1483,20 +1397,21 @@ def load_and_process_echa_additional() -> Tuple[pd.DataFrame, pd.DataFrame, pd.D
         reg_df=echa_additional_class,
         with_lunghini=False,
         env_smiles_lunghini=False,
+        include_speciation=include_speciation,
         prnt=False,
     )
 
-    echa_additional_reg_env, _ = replace_smiles_with_env_relevant_smiles(echa_additional_reg.copy())
-    echa_additional_reg = echa_additional_reg[echa_additional_reg.index.isin(echa_additional_reg_env.index)]
-    echa_additional_class_env, _ = replace_smiles_with_env_relevant_smiles(echa_additional_class.copy())
-    echa_additional_class = echa_additional_class[echa_additional_class.index.isin(echa_additional_class_env.index)]
+    echa_additional_reg_chemical_speciation, _ = replace_smiles_with_smiles_with_chemical_speciation(echa_additional_reg.copy())
+    echa_additional_reg = echa_additional_reg[echa_additional_reg.index.isin(echa_additional_reg_chemical_speciation.index)]
+    echa_additional_class_chemical_speciation, _ = replace_smiles_with_smiles_with_chemical_speciation(echa_additional_class.copy())
+    echa_additional_class = echa_additional_class[echa_additional_class.index.isin(echa_additional_class_chemical_speciation.index)]
 
     echa_additional_reg.reset_index(inplace=True, drop=True)
-    echa_additional_reg_env.reset_index(inplace=True, drop=True)
+    echa_additional_reg_chemical_speciation.reset_index(inplace=True, drop=True)
     echa_additional_class.reset_index(inplace=True, drop=True)
-    echa_additional_class_env.reset_index(inplace=True, drop=True)
+    echa_additional_class_chemical_speciation.reset_index(inplace=True, drop=True)
 
-    return echa_additional_reg, echa_additional_reg_env, echa_additional_class, echa_additional_class_env
+    return echa_additional_reg, echa_additional_reg_chemical_speciation, echa_additional_class, echa_additional_class_chemical_speciation
 
 
 def get_df_with_unique_cas(df: pd.DataFrame) -> pd.DataFrame:
@@ -1512,7 +1427,6 @@ def get_class_datasets() -> Dict[str, pd.DataFrame]:
     _, _, df_class = load_class_data_paper()
     curated_scs = pd.read_csv("datasets/curated_data/class_curated_scs.csv", index_col=0)
     curated_biowin = pd.read_csv("datasets/curated_data/class_curated_biowin.csv", index_col=0)
-
     curated_final = pd.read_csv(
         "datasets/curated_data/class_curated_final.csv", index_col=0
     )
@@ -1546,157 +1460,6 @@ def create_dfs_for_curated_data_analysis() -> Tuple[
         class_curated_final_removed,
     )
 
-
-def load_opera_data() -> Tuple[pd.DataFrame, pd.DataFrame]:
-    df_opera = PandasTools.LoadSDF("datasets/OPERA_data.sdf")
-    df_opera = df_opera[["CAS", "Canonical_QSARr", "preferred_name", "InChI_Code_QSARr", "Ready_Biodeg"]].rename(
-        columns={
-            "CAS": "cas",
-            "Canonical_QSARr": "smiles",
-            "preferred_name": "name",
-            "InChI_Code_QSARr": "inchi_from_smiles",
-            "Ready_Biodeg": "label",
-        }
-    )
-    df_opera["label"] = df_opera["label"].astype(float)
-    log.info("Entries in OPERA data: ", opera=len(df_opera))
-    log.info("Number of entries that are NRB", NRB=len(df_opera[df_opera["label"] == 0.0]))
-    log.info("Number of entries that are RB", RB=len(df_opera[df_opera["label"] == 1.0]))
-
-    df_opera = replace_multiple_cas_for_one_inchi(df=df_opera, prnt=True)
-    df_opera, _ = remove_organo_metals_function(df=df_opera, smiles_column="smiles")
-
-    df_readded = pd.read_csv("datasets/curated_data/class_curated_final.csv", index_col=0)
-    _, _, df_class_huang = load_class_data_paper()
-    df_class_huang = remove_smiles_with_incorrect_format(df=df_class_huang, col_name_smiles="smiles")
-    df_class_huang = openbabel_convert(
-        df=df_class_huang, input_type="smiles", column_name_input="smiles", output_type="inchi"
-    )
-
-    df_readded = remove_smiles_with_incorrect_format(df=df_readded, col_name_smiles="smiles")
-    df_readded = openbabel_convert(df=df_readded, input_type="smiles", column_name_input="smiles", output_type="inchi")
-
-    df_opera_in_huang = df_opera[df_opera["inchi_from_smiles"].isin(df_class_huang["inchi_from_smiles"])]
-    df_opera_additional = df_opera[~(df_opera["inchi_from_smiles"].isin(df_class_huang["inchi_from_smiles"]))]
-
-    log.info("OPERA data in Huang", df_opera_in_huang=len(df_opera_in_huang))
-    log.info("OPERA data NOT in Huang classification dataset", new_data=len(df_opera_additional))
-
-    df_opera_additional_env_smiles, _ = replace_smiles_with_env_relevant_smiles(df_opera_additional.copy())
-    df_opera_additional_env_smiles = df_opera_additional_env_smiles[
-        ~df_opera_additional_env_smiles["inchi_from_smiles"].isin(df_readded["inchi_from_smiles"])
-    ]
-    df_opera_additional = df_opera_additional[df_opera_additional["cas"].isin(df_opera_additional_env_smiles["cas"])]
-    assert len(df_opera_additional) == len(df_opera_additional_env_smiles)
-
-    log.info("OPERA data NOT in readded and Huang classification data", new_data=len(df_opera_additional))
-
-    assert len(df_opera_additional[df_opera_additional["inchi_from_smiles"].isin(df_readded["inchi_from_smiles"])]) == 0
-    assert (
-        len(df_opera_additional[df_opera_additional["inchi_from_smiles"].isin(df_class_huang["inchi_from_smiles"])])
-        == 0
-    )
-    assert (
-        len(
-            df_opera_additional_env_smiles[
-                df_opera_additional_env_smiles["inchi_from_smiles"].isin(df_readded["inchi_from_smiles"])
-            ]
-        )
-        == 0
-    )
-    assert (
-        len(
-            df_opera_additional_env_smiles[
-                df_opera_additional_env_smiles["inchi_from_smiles"].isin(df_class_huang["inchi_from_smiles"])
-            ]
-        )
-        == 0
-    )
-
-    log.info(
-        "Number of entries in df_opera_additional that are NRB",
-        NRB=len(df_opera_additional[df_opera_additional["label"] == 0.0]),
-    )
-    log.info(
-        "Number of entries in df_opera_additional that are RB",
-        RB=len(df_opera_additional[df_opera_additional["label"] == 1.0]),
-    )
-
-    df_opera_additional.reset_index(inplace=True, drop=True)
-    df_opera_additional_env_smiles.reset_index(inplace=True, drop=True)
-    return df_opera_additional, df_opera_additional_env_smiles
-
-
-def create_biowin_data() -> pd.DataFrame:
-    df_biowin = pd.read_excel("datasets/biowin_original_dataset.xlsx", names=["Col", "second"])
-    df_biowin.drop(columns=["second"], inplace=True)
-    df_biowin.dropna(axis=0, how="any", inplace=True)
-    df_biowin.dropna(axis=1, how="all", inplace=True)
-    df_biowin.drop(index=[0, 2, 8, 10], inplace=True)
-    df_biowin.reset_index(inplace=True, drop=True)
-    df_biowin = df_biowin["Col"].str.split(" ", expand=True)
-    df_biowin = df_biowin.astype(str)
-    df_biowin = df_biowin.replace("None", "")
-    df_biowin = df_biowin.applymap(lambda x: x.strip())
-
-    def format_cols(row):
-        cas = row[2]
-        name = row[3] + " " + row[4] + " " + row[5] + " " + row[6] + " " + row[7]
-        rest = ""
-        for i in range(8, 32):
-            r = row[i]
-            if len(r) > 0:
-                rest += r + ", "
-        if len(cas) == 0:
-            cas = row[3]
-            name = row[4] + " " + row[5] + " " + row[6] + " " + row[7]
-        cas = cas.lstrip("0")
-        return pd.Series([cas, name, rest])
-
-    df_biowin[["cas", "name", "rest"]] = df_biowin.apply(format_cols, axis=1)
-
-    df_formatted = df_biowin[["cas", "name", "rest"]].copy()
-    df_formatted[["label", "biowin1", "biowin2", "rest"]] = df_formatted["rest"].str.split(", ", expand=True)
-    df_formatted = df_formatted[["cas", "name", "label", "biowin1", "biowin2"]]
-
-    df_wrong = df_formatted[df_formatted["biowin1"] == ""]
-    df_formatted = df_formatted[df_formatted["biowin1"] != ""]
-    df_wrong.at[263, "name"] = "N'-(3-CHLORO-4-METHYLPHENYL)-N,N-DIMETHYLUREA"
-    df_wrong.at[263, "label"] = 0
-    df_wrong.at[263, "biowin1"] = 0.5186
-    df_wrong.at[263, "biowin2"] = 0.1900
-    df_formatted = pd.concat([df_formatted, df_wrong], axis=0)
-    return df_formatted
-
-
-def remove_biowin_entries_that_are_in_huang_class_and_readded(df_biowin_env: pd.DataFrame) -> pd.DataFrame:
-    _, _, df_huang_class = load_class_data_paper()
-    df_readded = pd.read_csv(
-        "datasets/curated_data/class_curated_final.csv", index_col=0
-    )
-    df_huang_class = remove_smiles_with_incorrect_format(df=df_huang_class, col_name_smiles="smiles")
-    df_huang_class = openbabel_convert(
-        df=df_huang_class,
-        input_type="smiles",
-        column_name_input="smiles",
-        output_type="inchi",
-    )
-
-    df_biowin_additional = df_biowin_env[~df_biowin_env["inchi_from_smiles"].isin(df_readded["inchi_from_smiles"])]
-
-    log.info(
-        "Data points in biowin data that are not in the Huang classification data and the readded classification dataset",
-        new_data=len(df_biowin_additional),
-    )
-    assert (
-        len(df_biowin_additional[df_biowin_additional["inchi_from_smiles"].isin(df_readded["inchi_from_smiles"])]) == 0
-    )
-    assert (
-        len(df_biowin_additional[df_biowin_additional["inchi_from_smiles"].isin(df_huang_class["inchi_from_smiles"])])
-        == 0
-    )
-
-    return df_biowin_additional
 
 
 def add_smiles_ccc(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -1884,13 +1647,13 @@ def aggregate_duplicates(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
 
 def add_smiles(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    df_checked = load_checked_organics6()
+    df_checked = load_gluege_data()
     cas_in_checked = [cas for cas in df.cas if cas in df_checked.cas]
     log.info("This many cas are checked by Gluege", cas=len(cas_in_checked))
     df_found, _ = process_data_not_checked_by_gluege(df=df)
 
     df_found = replace_multiple_cas_for_one_inchi(df=df_found, prnt=False)
-    df_found_scs, _ = replace_smiles_with_env_relevant_smiles(df_found.copy())
+    df_found_scs, _ = replace_smiles_with_smiles_with_chemical_speciation(df_found.copy())
 
     df_found, _ = remove_organo_metals_function(df=df_found, smiles_column="smiles")
     df_found_scs, _ = remove_organo_metals_function(df=df_found_scs, smiles_column="smiles")
@@ -1902,507 +1665,6 @@ def add_smiles(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     df_found_scs_agg = aggregate_duplicates(df=df_found_scs)
 
     return df_found_agg, df_found_scs_agg
-
-
-def load_biowin_data(new: bool) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    if new:
-        df_biowin = create_biowin_data()
-        _, df_biowin_smiles = add_smiles(df=df_biowin)
-
-        df_biowin = remove_biowin_entries_that_are_in_huang_class_and_readded(df_biowin_smiles)
-
-        df_biowin_smiles.to_csv("datasets/biowin_original_data_smiles.csv")
-    else:
-        df_biowin = pd.read_csv("datasets/biowin_original_data_smiles.csv", index_col=0)
-    return df_biowin
-
-
-def create_fingerprint_df(df: pd.DataFrame) -> pd.DataFrame:
-    mols = [AllChem.MolFromSmiles(smiles) for smiles in df["smiles"]]
-    fps = [np.array(GetMACCSKeysFingerprint(mol)) for mol in mols]
-    df_fp = pd.DataFrame(data=fps)
-    return df_fp
-
-
-def check_if_in_AD(df_train: pd.DataFrame, df_test: pd.DataFrame):
-    x_train = create_fingerprint_df(df=df_train)
-    x_train = x_train.values
-    x_test = create_fingerprint_df(df=df_test)
-    x_test = x_test.values
-
-    AD = ApplicabilityDomain(verbose=True)
-    df_similarities = AD.analyze_similarity(base_test=x_test, base_train=x_train, similarity_metric="tanimoto")
-    return df_similarities
-
-
-def get_only_data_inside_AD_of_Huang_and_readded(df_test: pd.DataFrame, df_name: str, mode: str) -> pd.DataFrame:
-    huang_threshold = 0.5
-    readded_threshold = 0.5
-
-    if mode == "class":
-        _, _, df_huang = load_class_data_paper()
-        df_readded = pd.read_csv(
-            "datasets/curated_data/class_curated_final.csv", index_col=0
-        )
-    elif mode == "reg":
-        df_huang = load_regression_df()
-        df_readded = pd.read_csv(
-            "datasets/curated_data/reg_curated_scs_biowin_readded.csv", index_col=0
-        )
-    df_similarities = check_if_in_AD(df_train=df_huang, df_test=df_test)
-    df_similarities.reset_index(inplace=True, drop=True)
-    subset_in_ad = df_similarities[df_similarities["Max"] >= huang_threshold]
-    df_test_in_ad = df_test[df_test.index.isin(subset_in_ad.index)]
-
-    df_similarities = check_if_in_AD(df_train=df_readded, df_test=df_test_in_ad)
-    df_similarities.reset_index(inplace=True, drop=True)
-    subset_in_ad = df_similarities[df_similarities["Max"] >= huang_threshold]
-    df_in_ad = df_test_in_ad[df_test_in_ad.index.isin(subset_in_ad.index)]
-    log.info(
-        f"Entries from {df_name} that are in the AD of the Huang and Zhang dataset and the readded dataset",
-        df_in_ad=len(df_in_ad),
-    )
-
-    return df_in_ad
-
-
-def find_echa_additional(
-    df_echa_additional: pd.DataFrame, df_echa_additional_env: pd.DataFrame
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    df_readded = pd.read_csv(
-        "datasets/curated_data/class_curated_final.csv", index_col=0
-    )
-    df_echa_additional_env = df_echa_additional_env[
-        ~df_echa_additional_env["inchi_from_smiles"].isin(df_readded["inchi_from_smiles"])
-    ].copy()
-    df_echa_additional = df_echa_additional[df_echa_additional["cas"].isin(df_echa_additional_env["cas"])].copy()
-    assert len(df_echa_additional) == len(df_echa_additional_env)
-    assert len(df_echa_additional[df_echa_additional["inchi_from_smiles"].isin(df_readded["inchi_from_smiles"])]) == 0
-    assert (
-        len(df_echa_additional_env[df_echa_additional_env["inchi_from_smiles"].isin(df_readded["inchi_from_smiles"])])
-        == 0
-    )
-
-    df_echa_additional.rename(columns={"y_true": "label"}, inplace=True)
-    df_echa_additional_env.rename(columns={"y_true": "label"}, inplace=True)
-    log.info(
-        "Entries in echa_additional that are not in Huang class dataset and the readded class dataset",
-        entries_echa_additional=len(df_echa_additional),
-        entries_echa_additional_env=len(df_echa_additional_env),
-    )
-    return df_echa_additional, df_echa_additional_env
-
-
-def load_external_class_test_dfs_additional_to_Huang_readded() -> Tuple[
-    Dict[str, pd.DataFrame], Dict[str, pd.DataFrame]
-]:
-    df_opera_additional, df_opera_additional_env = load_opera_data()
-    log.info(
-        "Entries in df_opera_additional",
-        entries_opera_additional=len(df_opera_additional),
-        entries_opera_additional_env=len(df_opera_additional_env),
-    )
-
-    df_biowin = load_biowin_data(new=True)
-    log.info("Entries in df_biowin", entries_biowin=len(df_biowin))
-
-    _, _, df_echa_additional, df_echa_additional_env = load_and_process_echa_additional()
-    df_echa_additional, df_echa_additional_env = find_echa_additional(df_echa_additional, df_echa_additional_env)
-
-    test_datasets = {
-        "OPERA_data": df_opera_additional,
-        "biowin_original_data": df_biowin,
-        "echa_additional": df_echa_additional,
-    }
-
-    log.info("Checking if datasets without SMILES with chemical speciation in AD")
-    test_datasets_in_ad: Dict[str, pd.DataFrame] = {}
-    for df_name, df in test_datasets.items():
-        df = get_only_data_inside_AD_of_Huang_and_readded(df_test=df, df_name=df_name, mode="class")
-        test_datasets_in_ad[f"{df_name}_in_ad"] = df
-    log.info("Checking if datasets with SMILES with chemical speciation in AD")
-
-    return test_datasets, test_datasets_in_ad
-
-
-def load_external_reg_test_dfs_additional_to_Huang_readded() -> Tuple[
-    pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame
-]:
-    echa_additional_reg, echa_additional_reg_env, _, _ = load_and_process_echa_additional()
-    df_readded = pd.read_csv(
-        "datasets/curated_data/reg_curated_scs_biowin_readded.csv", index_col=0
-    )
-    echa_additional_reg_env = echa_additional_reg_env[
-        ~echa_additional_reg_env["inchi_from_smiles"].isin(df_readded["inchi_from_smiles"])
-    ]
-    echa_additional_reg = echa_additional_reg[echa_additional_reg["cas"].isin(echa_additional_reg_env["cas"])]
-    assert len(echa_additional_reg) == len(echa_additional_reg_env)
-    assert len(echa_additional_reg[echa_additional_reg["inchi_from_smiles"].isin(df_readded["inchi_from_smiles"])]) == 0
-    assert (
-        len(echa_additional_reg_env[echa_additional_reg_env["inchi_from_smiles"].isin(df_readded["inchi_from_smiles"])])
-        == 0
-    )
-    log.info(
-        "Entries in echa_additional that are not in Huang regression dataset and the readded regression dataset",
-        entries_echa_additional=len(echa_additional_reg),
-        entries_echa_additional_env=len(echa_additional_reg_env),
-    )
-    echa_additional_reg_in_ad = get_only_data_inside_AD_of_Huang_and_readded(
-        df_test=echa_additional_reg, df_name="echa_additional", mode="reg"
-    )
-    echa_additional_reg_env_in_ad = get_only_data_inside_AD_of_Huang_and_readded(
-        df_test=echa_additional_reg_env, df_name="echa_additional", mode="reg"
-    )
-
-    return echa_additional_reg, echa_additional_reg_env, echa_additional_reg_in_ad, echa_additional_reg_env_in_ad
-
-
-
-
-def column_to_structure() -> Dict[int, str]: 
-    # source: http://www.mayachemtools.org/docs/modules/html/MACCSKeys.html
-    column_to_structure_maccs = {
-        0: "Index",
-        1: "Isotope",
-        2: "Atomic No. between 103 and 256",
-        3: "Group IVA & VA & VIA Rows 4-6",
-        4: "Actinide",
-        5: "Group IIIB & IVB",
-        6: "Lanthanide",
-        7: "Group VB & VIB & VIIB ",
-        8: "QAAA@1",
-        9: "Group VIII",
-        10: "Group IIA (Alkaline Earth)",
-        11: "4M Ring",
-        12: "Group IB & IIB",
-        13: "ON(C)C",
-        14: "S-S",
-        15: "OC(O)O",
-        16: "QAA@1",
-        17: "CTC",
-        18: "Group IIIA (B...)",
-        19: "7M Ring",
-        20: "SI",
-        21: "C=C(Q)Q",
-        22: "3M Ring",
-        23: "NC(O)O",
-        24: "N-O",
-        25: "NC(N)N",
-        26: "C$=C($A)$A",
-        27: "I",
-        28: "QCH2Q",
-        29: "P",
-        30: "CQ(C)(C)A",
-        31: "QX",
-        32: "CSN",
-        33: "NS",
-        34: "CH2=A",
-        35: "Group IA (Alkali Metal)",
-        36: "S Heterocycle",
-        37: "NC(O)N",
-        38: "NC(C)N",
-        39: "OS(O)O",
-        40: "S-O",
-        41: "CTN",
-        42: "F",
-        43: "QHAQH",
-        44: "Other",
-        45: "C=CN",
-        46: "BR",
-        47: "SAN",
-        48: "OQ(O)O",
-        49: "Charge",
-        50: "C=C(C)C",
-        51: "CSO",
-        52: "NN",
-        53: "QHAAAQH",
-        54: "QHAAQH",
-        55: "OSO",
-        56: "ON(O)C",
-        57: "O Heterocycle",
-        58: "QSQ",
-        59: "Snot%A%A",
-        60: "S=O",
-        61: "AS(A)A",
-        62: "A$A!A$A",
-        63: "N=O",
-        64: "A$A!S",
-        65: "C%N",
-        66: "CC(C)(C)A",
-        67: "QS",
-        68: "QHQH (&...)",
-        69: "QQH",
-        70: "QNQ",
-        71: "NO",
-        72: "OAAO",
-        73: "S=A",
-        74: "CH3ACH3",
-        75: "A!N$A",
-        76: "C=C(A)A",
-        77: "NAN",
-        78: "C=N",
-        79: "NAAN",
-        80: "NAAAN",
-        81: "SA(A)A",
-        82: "ACH2QH",
-        83: "QAAAA@1",
-        84: "NH2",
-        85: "CN(C)C",
-        86: "CH2QCH2",
-        87: "X!A$A",
-        88: "S",
-        89: "OAAAO",
-        90: "QHAACH2A",
-        91: "QHAAACH2A",
-        92: "OC(N)C",
-        93: "QCH3",
-        94: "QN",
-        95: "NAAO",
-        96: "5M Ring",
-        97: "NAAAO",
-        98: "QAAAAA@1",
-        99: "C=C",
-        100: "ACH2N",
-        101: "8M Ring",
-        102: "QO",
-        103: "CL",
-        104: "QHACH2A",
-        105: "A$A($A)$A",
-        106: "QA(Q)Q",
-        107: "XA(A)A",
-        108: "CH3AAACH2A",
-        109: "ACH2O",
-        110: "NCO",
-        111: "NACH2A",
-        112: "AA(A)(A)A",
-        113: "Onot%A%A",
-        114: "CH3CH2A",
-        115: "CH3ACH2A",
-        116: "CH3AACH2A",
-        117: "NAO",
-        118: "ACH2CH2A (more than 1)",
-        119: "N=A",
-        120: "Heterocyclic atom (more than 1)",
-        121: "N Heterocycle",
-        122: "AN(A)A",
-        123: "OCO",
-        124: "QQ",
-        125: "Aromatic Ring (more than 1)",
-        126: "A!O!A",
-        127: "A$A!O (more than 1)",
-        128: "ACH2AAACH2A",
-        129: "ACH2AACH2A",
-        130: "QQ (more than 1)",
-        131: "QH (more than 1)",
-        132: "OACH2A",
-        133: "A$A!N",
-        134: "X (Halogen)",
-        135: "Nnot%A%A",
-        136: "O=A (more than 1)",
-        137: "Heterocycle",
-        138: "QCH2A (more than 1)",
-        139: "OH",
-        140: "O (more than 3)",
-        141: "CH3 (more than 2)",
-        142: "N (more than 1)",
-        143: "A$A!O",
-        144: "Anot%A%Anot%A",
-        145: "6M Ring (more than 1)",
-        146: "O (more than 2)",
-        147: "ACH2CH2A",
-        148: "AQ(A)A",
-        149: "CH3 (more than 1)",
-        150: "A!A$A!A",
-        151: "NH",
-        152: "OC(C)C",
-        153: "QCH2A",
-        154: "C=O",
-        155: "A!CH2!A",
-        156: "NA(A)A",
-        157: "C-O",
-        158: "C-N",
-        159: "O (more than 1)",
-        160: "CH3",
-        161: "N",
-        162: "Aromatic",
-        163: "6M Ring",
-        164: "O",
-        165: "Ring",
-        166: "Fragments",    
-    }
-    return column_to_structure_maccs
-
-def get_maccs_names() -> List[str]:
-    maccs_names = [
-        "Index",
-        "Isotope",
-        "103 < Atomic No. < 256",
-        "Group IVA, VA, VIA Rows 4-6",
-        "Actinide",
-        "Group IIIB, IVB",
-        "Lanthanide",
-        "Group VB, VIB, VIIB ",
-        "QAAA@1",
-        "Group VIII",
-        "Group IIA (Alkaline Earth)",
-        "4M Ring",
-        "Group IB & IIB",
-        "ON(C)C",
-        "S-S",
-        "OC(O)O",
-        "QAA@1",
-        "CTC",
-        "Group IIIA (B...)",
-        "7M Ring",
-        "SI",
-        "C=C(Q)Q",
-        "3M Ring",
-        "NC(O)O",
-        "N-O",
-        "NC(N)N",
-        "C$=C($A)$A",
-        "I",
-        "QCH2Q",
-        "P",
-        "CQ(C)(C)A",
-        "QX",
-        "CSN",
-        "NS",
-        "CH2=A",
-        "Group IA (Alkali Metal)",
-        "S Heterocycle",
-        "NC(O)N",
-        "NC(C)N",
-        "OS(O)O",
-        "S-O",
-        "CTN",
-        "F",
-        "QHAQH",
-        "Other",
-        "C=CN",
-        "BR",
-        "SAN",
-        "OQ(O)O",
-        "Charge",
-        "C=C(C)C",
-        "CSO",
-        "NN",
-        "QHAAAQH",
-        "QHAAQH",
-        "OSO",
-        "ON(O)C",
-        "O Heterocycle",
-        "QSQ",
-        "Snot%A%A",
-        "S=O",
-        "AS(A)A",
-        "A$A!A$A",
-        "N=O",
-        "A$A!S",
-        "C%N",
-        "CC(C)(C)A",
-        "QS",
-        "QHQH (&...)",
-        "QQH",
-        "QNQ",
-        "NO",
-        "OAAO",
-        "S=A",
-        "CH3ACH3",
-        "A!N$A",
-        "C=C(A)A",
-        "NAN",
-        "C=N",
-        "NAAN",
-        "NAAAN",
-        "SA(A)A",
-        "ACH2QH",
-        "QAAAA@1",
-        "NH2",
-        "CN(C)C",
-        "CH2QCH2",
-        "X!A$A",
-        "S",
-        "OAAAO",
-        "QHAACH2A",
-        "QHAAACH2A",
-        "OC(N)C",
-        "QCH3",
-        "QN",
-        "NAAO",
-        "5M Ring",
-        "NAAAO",
-        "QAAAAA@1",
-        "C=C",
-        "ACH2N",
-        "8M Ring",
-        "QO",
-        "CL",
-        "QHACH2A",
-        "A$A($A)$A",
-        "QA(Q)Q",
-        "XA(A)A",
-        "CH3AAACH2A",
-        "ACH2O",
-        "NCO",
-        "NACH2A",
-        "AA(A)(A)A",
-        "Onot%A%A",
-        "CH3CH2A",
-        "CH3ACH2A",
-        "CH3AACH2A",
-        "NAO",
-        "ACH2CH2A (more than 1)",
-        "N=A",
-        "Heterocyclic atom (more than 1)",
-        "N Heterocycle",
-        "AN(A)A",
-        "OCO",
-        "QQ",
-        "Aromatic Ring (more than 1)",
-        "A!O!A",
-        "A$A!O (more than 1)",
-        "ACH2AAACH2A",
-        "ACH2AACH2A",
-        "QQ (more than 1)",
-        "QH (more than 1)",
-        "OACH2A",
-        "A$A!N",
-        "X (Halogen)",
-        "Nnot%A%A",
-        "O=A (more than 1)",
-        "Heterocycle",
-        "QCH2A (more than 1)",
-        "OH",
-        "O (more than 3)",
-        "CH3 (more than 2)",
-        "N (more than 1)",
-        "A$A!O",
-        "Anot%A%Anot%A",
-        "6M Ring (more than 1)",
-        "O (more than 2)",
-        "ACH2CH2A",
-        "AQ(A)A",
-        "CH3 (more than 1)",
-        "A!A$A!A",
-        "NH",
-        "OC(C)C",
-        "QCH2A",
-        "C=O",
-        "A!CH2!A",
-        "NA(A)A",
-        "C-O",
-        "C-N",
-        "O (more than 1)",
-        "CH3",
-        "N",
-        "Aromatic",
-        "6M Ring",
-        "O",
-        "Ring",
-        "Fragments",    
-    ]
-    return maccs_names
 
 
 def get_labels_colors_progress() -> Tuple[List[str], List[str]]:
@@ -2427,7 +1689,6 @@ def plot_results_with_standard_deviation(
     all_data: List[np.ndarray],
     labels: List[str],
     colors: List[str],
-    nsplits: int,
     title: str,
     seed: int,
     plot_with_paper: bool,

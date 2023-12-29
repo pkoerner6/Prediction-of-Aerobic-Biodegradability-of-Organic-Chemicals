@@ -62,6 +62,8 @@ def create_class_datasets(with_lunghini: bool, include_speciation: bool) -> None
         env_smiles_lunghini=True,
         prnt=args.prnt,
     )
+    curated_scs_biowin.reset_index(inplace=True, drop=True)
+    curated_scs_biowin_problematic.reset_index(inplace=True, drop=True)
     log.info("Entries in curated_biowin", entries=len(curated_scs_biowin))
     log.info("Entries in curated_biowin labeled as RB", entries=len(curated_scs_biowin[curated_scs_biowin["y_true"]==1]))
     log.info("Entries in curated_biowin labeled as NRB", entries=len(curated_scs_biowin[curated_scs_biowin["y_true"]==0]))
@@ -74,7 +76,7 @@ def create_class_datasets(with_lunghini: bool, include_speciation: bool) -> None
 
 
 
-def create_readded_biowin() -> None:
+def create_curated_final() -> None:
     log.info("\n Creating curated_final")
 
     class_biowin = pd.read_csv("datasets/curated_data/class_curated_biowin.csv", index_col=0)
@@ -83,7 +85,7 @@ def create_readded_biowin() -> None:
     df_class = class_biowin.copy()
     df_problematic = class_biowin_problematic.copy()
 
-    model_class = train_XGBClassifier_on_all_data(df=df_class, random_seed=args.random_seed, use_adasyn=True, include_speciation=False)
+    model_class = train_XGBClassifier_on_all_data(df=df_class, random_seed=args.random_seed, include_speciation=False)
 
     x_removed = create_input_classification(df_problematic, include_speciation=False)
     df_problematic["prediction_class"] = model_class.predict(x_removed)
@@ -104,18 +106,20 @@ def create_readded_biowin() -> None:
     )
 
     # Add data for which our prediction matched test label and train again
-    df_readded = pd.concat([class_biowin, df_label_and_model_match], ignore_index=True)
-    log.info("Entries in df_readded: ", df_readded=len(df_readded))
-    log.info("Entries in df_readded labeled as RB", entries=len(df_readded[df_readded["y_true"]==1]))
-    log.info("Entries in df_readded labeled as NRB", entries=len(df_readded[df_readded["y_true"]==0]))
+    df_curated_final = pd.concat([class_biowin, df_label_and_model_match], ignore_index=True)
+    log.info("Entries in df_curated_final: ", df_curated_final=len(df_curated_final))
+    log.info("Entries in df_curated_final labeled as RB", entries=len(df_curated_final[df_curated_final["y_true"]==1]))
+    log.info("Entries in df_curated_final labeled as NRB", entries=len(df_curated_final[df_curated_final["y_true"]==0]))
 
-    df_readded.to_csv(f"datasets/curated_data/class_curated_final.csv")
+    df_curated_final.reset_index(inplace=True, drop=True) 
+    df_curated_final.to_csv(f"datasets/curated_data/class_curated_final.csv")
     class_biowin_removed = pd.read_csv("datasets/curated_data/class_curated_scs_removed.csv", index_col=0)
     df_no_match = pd.concat([class_biowin_removed, df_no_match], axis=0)
+    df_no_match.reset_index(inplace=True, drop=True) 
     df_no_match.to_csv(f"datasets/curated_data/class_curated_final_removed.csv")
 
 
 
 if __name__ == "__main__":
     create_class_datasets(with_lunghini=args.with_lunghini, include_speciation=False)
-    create_readded_biowin()
+    create_curated_final()

@@ -3,25 +3,14 @@ import numpy as np
 import structlog
 import sys
 import os
-import pickle
 from typing import List, Dict, Tuple
 import matplotlib.pyplot as plt
 from time import time
-from collections import OrderedDict
 from imblearn.over_sampling import ADASYN
 from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import KFold
 from xgboost import XGBClassifier, XGBRegressor
-import lightgbm as lgbm
-from sklearn.svm import SVR
-from sklearn.ensemble import ExtraTreesClassifier
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.ensemble import BaggingClassifier
-from sklearn.ensemble import HistGradientBoostingRegressor
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import (
-    make_scorer,
-    accuracy_score,
     balanced_accuracy_score,
     f1_score,
     recall_score,
@@ -32,11 +21,6 @@ from sklearn.metrics import (
 from sklearn.utils.class_weight import compute_sample_weight
 from sklearn.utils.class_weight import compute_sample_weight
 
-np.int = int  # Because of scikit-optimize
-from skopt.space import Real, Categorical, Integer
-from skopt import BayesSearchCV
-from skopt.callbacks import DeadlineStopper, DeltaYStopper
-
 log = structlog.get_logger()
 
 
@@ -46,7 +30,6 @@ from processing_functions import create_input_regression
 from processing_functions import get_speciation_col_names
 from processing_functions import openbabel_convert
 from processing_functions import remove_smiles_with_incorrect_format
-from processing_functions import get_inchi_main_layer
 
 
 def get_class_results(true: np.ndarray, pred: np.ndarray) -> Tuple[float, float, float, float]:
@@ -467,124 +450,6 @@ def report_perf_hyperparameter_tuning(optimizer, x, y, title="Model", callbacks=
     return best_params
 
 
-def tune_regressor(
-    df: pd.DataFrame,
-    random_seed: int,
-    nsplits: int,
-    search_spaces: Dict,
-    include_speciation: bool,
-    fixed_testset: bool,
-    n_jobs: int,
-    model,
-) -> Dict:
-    scoring = make_scorer(
-        r2_score, greater_is_better=True
-    )  # if want rmse, use: make_scorer(mean_squared_error, greater_is_better=False)
-
-    train_dfs, test_dfs = split_regression_df_with_grouping(
-        df=df,
-        nsplits=nsplits,
-        column_for_grouping="cas",
-        random_seed=random_seed,
-    )
-
-    cv_strategy: List = []
-    for train_df, test_df in zip(train_dfs, test_dfs):
-        cv_strategy.append((train_df.index, test_df.index))
-
-    x = create_input_regression(df=df, include_speciation=include_speciation)
-    y = df["biodegradation_percent"]
-
-    opt = BayesSearchCV(
-        estimator=model(),
-        search_spaces=search_spaces,
-        scoring=scoring,
-        cv=cv_strategy,
-        n_iter=200,
-        n_points=5,
-        n_jobs=n_jobs,
-        return_train_score=True,
-        refit=False,
-        optimizer_kwargs={"base_estimator": "GP"},
-        random_state=random_seed,
-        verbose=0,
-    )
-    overdone_control = DeltaYStopper(delta=0.0001)  # Stop if the gain of the optimization becomes too small
-    time_limit_control = DeadlineStopper(total_time=60 * 60 * 4)
-    opt.fit(x, y, callback=[overdone_control, time_limit_control])
-    best_params = report_perf_hyperparameter_tuning(opt, x, y, callbacks=[overdone_control, time_limit_control])
-
-    log.info("Best hyperparameters", best_params=best_params)
-    return best_params
-
-
-def train_regressor_with_best_hyperparamters(
-    df: pd.DataFrame,
-    random_seed: int,
-    nsplits: int,
-    include_speciation: bool,
-    fixed_testset: bool,
-    df_test: pd.DataFrame,
-    dataset_name: str,
-    best_params: Dict,
-    model,
-) -> Tuple[List[float], List[float], List[float], List[float]]:
-    rmse, mae, r2, mse = kf_regression(
-        df=df,
-        column_for_grouping="inchi_from_smiles",
-        random_seed=random_seed,
-        nsplits=nsplits,
-        include_speciation=include_speciation,
-        fixed_testset=fixed_testset,
-        df_test=df_test,
-        dataset_name=dataset_name,
-        model=model(**best_params),
-    )
-    log.info("RMSE: ", rmse=rmse)
-    log.info("MAE: ", mae=mae)
-    log.info("r2: ", r2=r2)
-    log.info("MSE: ", mse=mse)
-    return rmse, mae, r2, mse
-
-
-def tune_and_train_regressor(
-    df: pd.DataFrame,
-    random_seed: int,
-    nsplits: int,
-    search_spaces: Dict,
-    include_speciation: bool,
-    fixed_testset: bool,
-    df_test: pd.DataFrame,
-    dataset_name: str,
-    n_jobs: int,
-    model,
-) -> Tuple[List[float], List[float], List[float], List[float]]:
-
-    best_params = tune_regressor(
-        df=df,
-        random_seed=random_seed,
-        nsplits=nsplits,
-        search_spaces=search_spaces,
-        include_speciation=include_speciation,
-        fixed_testset=fixed_testset,
-        n_jobs=n_jobs,
-        model=model,
-    )
-
-    rmse, mae, r2, mse = train_regressor_with_best_hyperparamters(
-        df=df,
-        random_seed=random_seed,
-        nsplits=nsplits,
-        include_speciation=include_speciation,
-        fixed_testset=fixed_testset,
-        df_test=df_test,
-        dataset_name=dataset_name,
-        best_params=best_params,
-        model=model,
-    )
-    return rmse, mae, r2, mse
-
-
 def get_Huang_Zhang_regression_parameters() -> Dict[str, object]:
     best_params = {
         "alpha": 2.41,
@@ -607,57 +472,6 @@ def get_Huang_Zhang_regression_parameters() -> Dict[str, object]:
         "subsample": 0.58,
         "tree_method": "exact",
         "validate_parameters": 1,
-    }
-    return best_params
-
-
-def get_lazy_xgbr_parameters() -> Dict[str, object]:
-    best_params = {
-        "alpha": 4.7780585065361,
-        "base_score": 0.8055328348792045,
-        "booster": "gbtree",
-        "colsample_bylevel": 0.7399509073594608,
-        "colsample_bynode": 0.17398551573835808,
-        "colsample_bytree": 0.6995726624815766,
-        "gamma": 0.03235404457038847,
-        "importance_type": "gain",
-        "lambda": 0.7084783537630203,
-        "learning_rate": 0.16214176723141335,
-        "max_delta_step": 0.09230985280173427,
-        "max_depth": 40,
-        "min_child_weight": 1.8340273097140976,
-        "n_estimators": 971,
-        "num_parallel_tree": 16,
-        "reg_alpha": 2.4987822315018455,
-        "reg_lambda": 3.4693236850371694,
-        "scale_pos_weight": 0.49009783649381233,
-        "subsample": 0.9420718385084459,
-        "tree_method": "exact",
-        "validate_parameters": 1,
-    }
-    return best_params
-
-
-def get_lazy_xgbc_parameters() -> Dict[str, object]:
-    best_params = {
-        "alpha": 2.7736319580937456,
-        "base_score": 0.4808439580915848,
-        "booster": "gbtree",
-        "colsample_bylevel": 0.9153371495471292,
-        "colsample_bynode": 0.3042219673148875,
-        "colsample_bytree": 0.9604420158222629,
-        "gamma": 0.009848233225016628,
-        "lambda": 0.403432692925663,
-        "learning_rate": 0.2311373411076377,
-        "max_delta_step": 3.061110290373153,
-        "max_depth": 206,
-        "min_child_weight": 1.3585293908683982,
-        "n_estimators": 5155,
-        "num_parallel_tree": 20,
-        "scale_pos_weight": 1.8583803082857837,
-        "subsample": 0.7622612926036432,
-        "tree_method": "exact",
-        "validate_parameters": True,
     }
     return best_params
 
@@ -693,116 +507,7 @@ def train_XGBRegressor_Huang_Zhang(
     return rmse, mae, r2, mse
 
 
-def tune_classifiers(
-    df: pd.DataFrame,
-    random_seed: int,
-    nsplits: int,
-    search_spaces: Dict,
-    include_speciation: bool,
-    n_jobs: int,
-    model,
-):
-    x = create_input_classification(df, include_speciation)
-    y = df["y_true"]
-
-    x, y = get_balanced_data_adasyn(random_seed=random_seed, x=x, y=y)
-
-    scoring = make_scorer(balanced_accuracy_score, greater_is_better=True)
-    skf = StratifiedKFold(n_splits=nsplits, shuffle=True, random_state=random_seed)
-    cv_strategy = list(skf.split(x, y))
-
-    opt = BayesSearchCV(
-        estimator=model(),
-        search_spaces=search_spaces,
-        scoring=scoring,
-        cv=cv_strategy,
-        n_iter=120,
-        n_points=5,  # number of hyperparameter sets evaluated at the same time
-        n_jobs=n_jobs,
-        return_train_score=True,
-        refit=False,
-        optimizer_kwargs={"base_estimator": "GP"},  # optmizer parameters: use Gaussian Process (GP)
-        random_state=random_seed,
-        verbose=0,
-    )
-    overdone_control = DeltaYStopper(delta=0.0001)  # Stop if the gain of the optimization becomes too small
-    time_limit_control = DeadlineStopper(total_time=60 * 60 * 4)
-    best_params = report_perf_hyperparameter_tuning(
-        opt,
-        x,
-        y,
-        callbacks=[overdone_control, time_limit_control],
-    )
-
-    log.info("Best hyperparameters", best_params=best_params)
-    return best_params
-
-
-def train_classifier_with_best_hyperparamters(
-    df: pd.DataFrame,
-    random_seed: int,
-    nsplits: int,
-    include_speciation: bool,
-    df_test: pd.DataFrame,
-    dataset_name: str,
-    best_params: Dict,
-    paper: bool, 
-    model,
-):
-    accu, sensitivity, specificity, f1 = skf_classification(
-        df=df,
-        random_seed=random_seed,
-        nsplits=nsplits,
-        use_adasyn=True,
-        include_speciation=include_speciation,
-        df_test=df_test,
-        dataset_name=dataset_name,
-        model=model(**best_params),
-    )
-    log.info("Accuracy: ", accuracy=accu)
-    log.info("Sensitivity: ", sensitivity=sensitivity)
-    log.info("Specificity: ", specificity=specificity)
-    log.info("F1: ", f1=f1)
-    return accu, f1, sensitivity, specificity
-
-
-def tune_and_train_classifiers(
-    df: pd.DataFrame,
-    random_seed: int,
-    nsplits: int,
-    search_spaces: Dict,
-    include_speciation: bool,
-    df_test: pd.DataFrame,
-    dataset_name: str,
-    n_jobs: int,
-    model,
-) -> Tuple[List[float], List[float], List[float], List[float]]:
-
-    best_params = tune_classifiers(
-        df=df,
-        random_seed=random_seed,
-        nsplits=nsplits,
-        search_spaces=search_spaces,
-        include_speciation=include_speciation,
-        n_jobs=n_jobs,
-        model=model,
-    )
-    paper = True if dataset_name == "df_paper" else False
-    accu, f1, sensitivity, specificity = train_classifier_with_best_hyperparamters(
-        df=df,
-        random_seed=random_seed,
-        nsplits=nsplits,
-        include_speciation=include_speciation,
-        df_test=df_test,
-        dataset_name=dataset_name,
-        best_params=best_params,
-        paper=paper,
-        model=model,
-    )
-    return accu, f1, sensitivity, specificity
-
-
-def train_XGBClassifier( # run_XGBClassifier_Huang_Zhang
+def train_XGBClassifier(
     df: pd.DataFrame,
     random_seed: int,
     nsplits: int,
@@ -829,10 +534,9 @@ def train_XGBClassifier( # run_XGBClassifier_Huang_Zhang
     return accu, f1, sensitivity, specificity
 
 
-def train_XGBClassifier_on_all_data( # train_XGBClassifier_Huang_Zhang_on_all_data
+def train_XGBClassifier_on_all_data( 
     df: pd.DataFrame,
     random_seed: int,
-    use_adasyn: bool,
     include_speciation: bool,
 ) -> XGBClassifier:
 
@@ -846,404 +550,69 @@ def train_XGBClassifier_on_all_data( # train_XGBClassifier_Huang_Zhang_on_all_da
     return model_class
 
 
-def train_class_model_on_all_data(
-    df: pd.DataFrame,
-    random_seed: int,
-    use_adasyn: bool,
-    include_speciation: bool,
-    model_with_best_hyperparams,
-):
-    x = create_input_classification(df, include_speciation=include_speciation)
-    y = df["y_true"]
-    x, y = get_balanced_data_adasyn(random_seed=random_seed, x=x, y=y)
-    model_class = model_with_best_hyperparams
-    model_class.fit(x, y)
-    return model_class
+# def tune_and_train_LGBMClassifier( # TODO
+#     df: pd.DataFrame,
+#     random_seed: int,
+#     nsplits: int,
+#     include_speciation: bool,
+#     df_test: pd.DataFrame,
+#     dataset_name: str,
+#     n_jobs: int,
+# ) -> Tuple[List[float], List[float], List[float], List[float]]:
+#     model = lgbm.LGBMClassifier
+#     search_spaces = {
+#         "boosting_type": Categorical(["gbdt"]),
+#         "learning_rate": Real(0.001, 0.1, "uniform"),
+#         "max_depth": Categorical([-1]),
+#         "n_estimators": Integer(100, 1600),
+#         "num_leaves": Integer(100, 1000),
+#         "objective": Categorical(["binary"]),
+#     }
+
+#     accu, f1, sensitivity, specificity = tune_and_train_classifiers(
+#         df=df,
+#         random_seed=random_seed,
+#         nsplits=nsplits,
+#         search_spaces=search_spaces,
+#         include_speciation=include_speciation,
+#         df_test=df_test,
+#         dataset_name=dataset_name,
+#         n_jobs=n_jobs,
+#         model=model,
+#     )
+#     return accu, f1, sensitivity, specificity
 
 
-def train_reg_model_on_all_data(
-    df: pd.DataFrame,
-    random_seed: int,
-    include_speciation: bool,
-    model_with_best_hyperparams,
-):
-    x = create_input_regression(df, include_speciation=include_speciation)
-    y = df["biodegradation_percent"]
-    model_reg = model_with_best_hyperparams
-    model_reg.fit(x, y)
-    return model_reg
+# def tune_and_train_BaggingClassifier( # TODO
+#     df: pd.DataFrame,
+#     random_seed: int,
+#     nsplits: int,
+#     include_speciation: bool,
+#     df_test: pd.DataFrame,
+#     dataset_name: str,
+#     n_jobs: int,
+# ) -> Tuple[List[float], List[float], List[float], List[float]]:
+#     model = BaggingClassifier
+#     search_spaces = {
+#         "max_features": Integer(1, 164),
+#         "max_samples": Integer(5, 3000),
+#         "n_estimators": Integer(200, 3000),
+#         "n_jobs": Categorical([-1]),
+#         "random_state": Categorical([random_seed]),
+#     }
 
-
-def tune_and_train_XGBRegressor(
-    df: pd.DataFrame,
-    random_seed: int,
-    nsplits: int,
-    include_speciation: bool,
-    fixed_testset: bool,
-    df_test: pd.DataFrame,
-    dataset_name: str,
-    n_jobs: int,
-) -> Tuple[List[float], List[float], List[float], List[float]]:
-    model = XGBRegressor
-    search_spaces = {
-        "alpha": Real(3.5, 5.5, "uniform"),
-        "base_score": Real(0.7, 0.99, "uniform"),
-        "booster": Categorical(["gbtree"]),
-        "colsample_bylevel": Real(0.65, 0.9, "uniform"),
-        "colsample_bynode": Real(0.1, 0.3, "uniform"),
-        "colsample_bytree": Real(0.5, 0.8, "uniform"),
-        "gamma": Real(0.001, 0.1, "uniform"),
-        "importance_type": Categorical(["gain"]),
-        "lambda": Real(0.6, 0.8, "uniform"),
-        "learning_rate": Real(0.01, 0.3, "uniform"),
-        "max_delta_step": Real(0.01, 0.2, "uniform"),
-        "max_depth": Integer(30, 500),
-        "min_child_weight": Real(1.0, 2.5, "uniform"),
-        "n_estimators": Integer(800, 1500),
-        "num_parallel_tree": Integer(1, 50),
-        "reg_alpha": Real(1.8, 3.0, "uniform"),
-        "reg_lambda": Real(2.5, 4.5, "uniform"),
-        "scale_pos_weight": Real(0.3, 0.7, "uniform"),
-        "subsample": Real(0.8, 0.99, "uniform"),
-        "tree_method": Categorical(["auto", "exact", "hist"]),
-        "validate_parameters": Categorical([1]),
-    }
-
-    rmse, mae, r2, mse = tune_and_train_regressor(
-        df=df,
-        random_seed=random_seed,
-        nsplits=nsplits,
-        search_spaces=search_spaces,
-        include_speciation=include_speciation,
-        fixed_testset=fixed_testset,
-        df_test=df_test,
-        dataset_name=dataset_name,
-        n_jobs=n_jobs,
-        model=model,
-    )
-    return rmse, mae, r2, mse
-
-
-def tune_and_train_HistGradientBoostingRegressor(
-    df: pd.DataFrame,
-    random_seed: int,
-    nsplits: int,
-    include_speciation: bool,
-    fixed_testset: bool,
-    df_test: pd.DataFrame,
-    dataset_name: str,
-    n_jobs: int,
-) -> Tuple[List[float], List[float], List[float], List[float]]:
-    model = HistGradientBoostingRegressor
-    search_spaces = {
-        "learning_rate": Real(0.01, 0.1, "uniform"),
-        "loss": Categorical(["squared_error", "absolute_error", "poisson", "quantile"]),
-        "max_depth": Categorical([None]),
-        "max_iter": Integer(200, 1400),
-        "max_leaf_nodes": Categorical([None]),
-        "min_samples_leaf": Integer(10, 300),
-        "quantile": Real(0.1, 0.99, "uniform"),
-        "random_state": Categorical([random_seed]),
-        "tol": Real(1e-11, 1e-2, "uniform"),
-    }
-
-    rmse, mae, r2, mse = tune_and_train_regressor(
-        df=df,
-        random_seed=random_seed,
-        nsplits=nsplits,
-        search_spaces=search_spaces,
-        include_speciation=include_speciation,
-        fixed_testset=fixed_testset,
-        df_test=df_test,
-        dataset_name=dataset_name,
-        n_jobs=n_jobs,
-        model=model,
-    )
-    return rmse, mae, r2, mse
-
-
-def tune_and_train_RandomForestRegressor(
-    df: pd.DataFrame,
-    random_seed: int,
-    nsplits: int,
-    include_speciation: bool,
-    fixed_testset: bool,
-    df_test: pd.DataFrame,
-    dataset_name: str,
-    n_jobs: int,
-) -> Tuple[List[float], List[float], List[float], List[float]]:
-    model = RandomForestRegressor
-    search_spaces = {
-        "criterion": Categorical(["squared_error", "absolute_error", "friedman_mse", "poisson"]),
-        "max_features": Categorical(["sqrt", "log2", None]),
-        "min_samples_leaf": Integer(1, 10),
-        "min_samples_split": Integer(2, 10),
-        "n_estimators": Integer(500, 1000),
-        "random_state": Categorical([random_seed]),
-    }
-
-    rmse, mae, r2, mse = tune_and_train_regressor(
-        df=df,
-        random_seed=random_seed,
-        nsplits=nsplits,
-        search_spaces=search_spaces,
-        include_speciation=include_speciation,
-        fixed_testset=fixed_testset,
-        df_test=df_test,
-        dataset_name=dataset_name,
-        n_jobs=n_jobs,
-        model=model,
-    )
-    return rmse, mae, r2, mse
-
-
-def tune_and_train_LGBMRegressor(
-    df: pd.DataFrame,
-    random_seed: int,
-    nsplits: int,
-    include_speciation: bool,
-    fixed_testset: bool,
-    df_test: pd.DataFrame,
-    dataset_name: str,
-    n_jobs: int,
-) -> Tuple[List[float], List[float], List[float], List[float]]:
-    model = lgbm.LGBMRegressor
-    search_spaces: Dict = {
-        "boosting_type": Categorical(["gbdt", "dart"]),
-        "learning_rate": Real(0.01, 0.5, "uniform"),
-        "max_depth": Categorical([-1]),
-        "min_child_samples": Integer(1, 20),
-        "n_estimators": Integer(200, 1800),
-        "num_leaves": Integer(5, 100),
-        "random_state": Categorical([random_seed]),
-    }
-
-    rmse, mae, r2, mse = tune_and_train_regressor(
-        df=df,
-        random_seed=random_seed,
-        nsplits=nsplits,
-        search_spaces=search_spaces,
-        include_speciation=include_speciation,
-        fixed_testset=fixed_testset,
-        df_test=df_test,
-        dataset_name=dataset_name,
-        n_jobs=n_jobs,
-        model=model,
-    )
-    return rmse, mae, r2, mse
-
-
-def tune_and_train_SVR(
-    df: pd.DataFrame,
-    random_seed: int,
-    nsplits: int,
-    include_speciation: bool,
-    fixed_testset: bool,
-    df_test: pd.DataFrame,
-    dataset_name: str,
-    n_jobs: int,
-) -> Tuple[List[float], List[float], List[float], List[float]]:
-    model = SVR
-    search_spaces: Dict = {
-        "C": Real(0.3, 30.0, "uniform"),
-        "coef0": Real(5.0, 30.0, "uniform"),
-        "degree": Integer(2, 3),
-        "gamma": Categorical(["scale", "auto"]),
-        "kernel": Categorical(["poly", "rbf", "sigmoid"]),
-        "max_iter": Categorical([-1]),
-        "tol": Real(1e-4, 1e-2, "uniform"),
-    }
-
-    rmse, mae, r2, mse = tune_and_train_regressor(
-        df=df,
-        random_seed=random_seed,
-        nsplits=nsplits,
-        search_spaces=search_spaces,
-        include_speciation=include_speciation,
-        fixed_testset=fixed_testset,
-        df_test=df_test,
-        dataset_name=dataset_name,
-        n_jobs=n_jobs,
-        model=model,
-    )
-    return rmse, mae, r2, mse
-
-
-def tune_and_train_LGBMClassifier(
-    df: pd.DataFrame,
-    random_seed: int,
-    nsplits: int,
-    include_speciation: bool,
-    df_test: pd.DataFrame,
-    dataset_name: str,
-    n_jobs: int,
-) -> Tuple[List[float], List[float], List[float], List[float]]:
-    model = lgbm.LGBMClassifier
-    search_spaces = {
-        "boosting_type": Categorical(["gbdt"]),
-        "learning_rate": Real(0.001, 0.1, "uniform"),
-        "max_depth": Categorical([-1]),
-        "n_estimators": Integer(100, 1600),
-        "num_leaves": Integer(100, 1000),
-        "objective": Categorical(["binary"]),
-    }
-
-    accu, f1, sensitivity, specificity = tune_and_train_classifiers(
-        df=df,
-        random_seed=random_seed,
-        nsplits=nsplits,
-        search_spaces=search_spaces,
-        include_speciation=include_speciation,
-        df_test=df_test,
-        dataset_name=dataset_name,
-        n_jobs=n_jobs,
-        model=model,
-    )
-    return accu, f1, sensitivity, specificity
-
-
-def tune_and_train_XGBClassifier(
-    df: pd.DataFrame,
-    random_seed: int,
-    nsplits: int,
-    include_speciation: bool,
-    df_test: pd.DataFrame,
-    dataset_name: str,
-    n_jobs: int,
-) -> Tuple[List[float], List[float], List[float], List[float]]:
-    model = XGBClassifier
-    search_spaces = {
-        "alpha": Real(1.0, 4.0, "uniform"),
-        "base_score": Real(0.4, 0.60, "uniform"),
-        "booster": Categorical(["gbtree"]),
-        "colsample_bylevel": Real(0.7, 1.0, "uniform"),
-        "colsample_bynode": Real(0.1, 0.5, "uniform"),
-        "colsample_bytree": Real(0.7, 1.0, "uniform"),
-        "gamma": Real(0.001, 0.1, "uniform"),
-        "lambda": Real(0.1, 0.6, "uniform"),
-        "learning_rate": Real(0.01, 0.8, "uniform"),
-        "max_delta_step": Real(2.0, 4.0, "uniform"),
-        "max_depth": Integer(100, 300),
-        "min_child_weight": Real(1.0, 3.0, "uniform"),
-        "n_estimators": Integer(4800, 5400),
-        "num_parallel_tree": Integer(15, 25),
-        "scale_pos_weight": Real(0.5, 3.0, "uniform"),
-        "subsample": Real(0.6, 0.99, "uniform"),
-        "tree_method": Categorical(["exact"]),
-        "validate_parameters": Categorical([True]),
-    }
-
-    accu, f1, sensitivity, specificity = tune_and_train_classifiers(
-        df=df,
-        random_seed=random_seed,
-        nsplits=nsplits,
-        search_spaces=search_spaces,
-        include_speciation=include_speciation,
-        df_test=df_test,
-        dataset_name=dataset_name,
-        n_jobs=n_jobs,
-        model=model,
-    )
-    return accu, f1, sensitivity, specificity
-
-
-def tune_and_train_ExtraTreesClassifier(
-    df: pd.DataFrame,
-    random_seed: int,
-    nsplits: int,
-    include_speciation: bool,
-    df_test: pd.DataFrame,
-    dataset_name: str,
-    n_jobs: int,
-) -> Tuple[List[float], List[float], List[float], List[float]]:
-    model = ExtraTreesClassifier
-    search_spaces = {
-        "criterion": Categorical(["gini", "entropy", "log_loss"]),
-        "max_depth": Categorical([None]),
-        "max_features": Categorical(["sqrt", "log2", None]),
-        "min_samples_leaf": Integer(1, 10),
-        "min_samples_split": Integer(2, 10),
-        "n_estimators": Integer(1000, 3000),
-        "random_state": Categorical([random_seed]),
-    }
-
-    accu, f1, sensitivity, specificity = tune_and_train_classifiers(
-        df=df,
-        random_seed=random_seed,
-        nsplits=nsplits,
-        search_spaces=search_spaces,
-        include_speciation=include_speciation,
-        df_test=df_test,
-        dataset_name=dataset_name,
-        n_jobs=n_jobs,
-        model=model,
-    )
-    return accu, f1, sensitivity, specificity
-
-
-def tune_and_train_RandomForestClassifier(
-    df: pd.DataFrame,
-    random_seed: int,
-    nsplits: int,
-    include_speciation: bool,
-    df_test: pd.DataFrame,
-    dataset_name: str,
-    n_jobs: int,
-) -> Tuple[List[float], List[float], List[float], List[float]]:
-    model = RandomForestClassifier
-    search_spaces = {
-        "criterion": Categorical(["gini", "entropy", "log_loss"]),
-        "max_features": Categorical(["sqrt", "log2", None]),
-        "min_samples_leaf": Integer(1, 5),
-        "min_samples_split": Integer(2, 5),
-        "n_estimators": Integer(1000, 2500),
-        "random_state": Categorical([random_seed]),
-    }
-
-    accu, f1, sensitivity, specificity = tune_and_train_classifiers(
-        df=df,
-        random_seed=random_seed,
-        nsplits=nsplits,
-        search_spaces=search_spaces,
-        include_speciation=include_speciation,
-        df_test=df_test,
-        dataset_name=dataset_name,
-        n_jobs=n_jobs,
-        model=model,
-    )
-    return accu, f1, sensitivity, specificity
-
-
-def tune_and_train_BaggingClassifier(
-    df: pd.DataFrame,
-    random_seed: int,
-    nsplits: int,
-    include_speciation: bool,
-    df_test: pd.DataFrame,
-    dataset_name: str,
-    n_jobs: int,
-) -> Tuple[List[float], List[float], List[float], List[float]]:
-    model = BaggingClassifier
-    search_spaces = {
-        "max_features": Integer(1, 164),
-        "max_samples": Integer(5, 3000),
-        "n_estimators": Integer(200, 3000),
-        "n_jobs": Categorical([-1]),
-        "random_state": Categorical([random_seed]),
-    }
-
-    accu, f1, sensitivity, specificity = tune_and_train_classifiers(
-        df=df,
-        random_seed=random_seed,
-        nsplits=nsplits,
-        search_spaces=search_spaces,
-        include_speciation=include_speciation,
-        df_test=df_test,
-        dataset_name=dataset_name,
-        n_jobs=n_jobs,
-        model=model,
-    )
-    return accu, f1, sensitivity, specificity
+#     accu, f1, sensitivity, specificity = tune_and_train_classifiers(
+#         df=df,
+#         random_seed=random_seed,
+#         nsplits=nsplits,
+#         search_spaces=search_spaces,
+#         include_speciation=include_speciation,
+#         df_test=df_test,
+#         dataset_name=dataset_name,
+#         n_jobs=n_jobs,
+#         model=model,
+#     )
+#     return accu, f1, sensitivity, specificity
 
 
 def plot_regression_error(
@@ -1290,27 +659,3 @@ def analyze_regression_results_and_plot(df: pd.DataFrame, figure_name: str, figu
     plot_regression_error(df, figure_name, figure_title)
 
 
-
-def get_best_classifier_readded(train_new: bool, random_seed: int) -> Tuple[XGBClassifier, np.ndarray]:
-    file_name = "models/xgbc.pkl"
-
-    df_class_readded = pd.read_csv(
-        "datasets/curated_data/class_curated_scs_biowin_readded.csv", index_col=0
-    )
-    best_params = get_lazy_xgbc_parameters()
-    classifier = XGBClassifier(**best_params)
-
-    x = create_input_classification(df_class_readded, include_speciation=False)
-    y = df_class_readded["y_true"]
-    x, y = get_balanced_data_adasyn(random_seed=random_seed, x=x, y=y)
-
-    if train_new: 
-        log.info("Fitting model")
-        classifier.fit(x, y)
-        log.info("Finished fitting model")
-        pickle.dump(classifier, open(file_name, "wb"))
-
-    else: 
-        classifier = pickle.load(open(file_name, "rb"))
-
-    return classifier, x

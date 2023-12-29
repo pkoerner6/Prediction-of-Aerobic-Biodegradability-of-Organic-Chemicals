@@ -19,11 +19,11 @@ from typing import List, Dict, Tuple
 import matplotlib.pyplot as plt
 
 from sklearn.model_selection import train_test_split
-from lazypredict.Supervised import LazyClassifier, LazyRegressor
+from lazypredict.Supervised import LazyClassifier
 from sklearn.utils import all_estimators
 from sklearn.base import ClassifierMixin
 import lightgbm as lgbm
-from xgboost import XGBRegressor, XGBClassifier
+from xgboost import XGBClassifier
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.ensemble import RandomForestClassifier
 
@@ -37,11 +37,6 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import (
     make_scorer,
     accuracy_score,
-    f1_score,
-    recall_score,
-    mean_absolute_error,
-    mean_squared_error,
-    r2_score,
 )
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
@@ -50,7 +45,6 @@ from processing_functions import bit_vec_to_lst_of_lst
 from processing_functions import convert_to_morgan_fingerprints
 from processing_functions import convert_to_maccs_fingerprints
 from processing_functions import convert_to_rdk_fingerprints
-from ml_functions import split_regression_df_with_grouping
 from ml_functions import get_balanced_data_adasyn
 from ml_functions import report_perf_hyperparameter_tuning
 from ml_functions import get_class_results
@@ -362,7 +356,6 @@ def tune_and_train_classifiers(
     accu, f1, sensitivity, specificity = train_classifier_with_best_hyperparamters(
         df=df,
         df_test=df_test,
-        # dataset_name=dataset_name,
         model=model(**best_params),
     )
     return accu, f1, sensitivity, specificity

@@ -93,21 +93,16 @@ def run_with_improved_data() -> None:
     specificity = [np.array([0.874])] + specificity  # reported specificity from Huang and Zhang
     title_to_data = {
         "Balanced accuracy": balanced_accuracy,
-        "$\mathregular{F_{1}}$": f1,
-        "Sensitivity": sensitivity,
-        "Specificity": specificity,
     }
 
     labels, colors = get_labels_colors_progress()
     for title, data in title_to_data.items():
-        if title == "Balanced accuracy":
-            data = [array * 100 for array in data]
+        data = [array * 100 for array in data]
 
         plot_results_with_standard_deviation(
             all_data=data,
             labels=labels,
             colors=colors,
-            nsplits=args.nsplits,
             title=title,
             seed=args.random_seed,
             plot_with_paper=True,

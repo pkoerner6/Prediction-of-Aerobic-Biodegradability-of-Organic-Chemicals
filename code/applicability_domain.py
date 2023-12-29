@@ -17,7 +17,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from processing_functions import load_class_data_paper
 from processing_functions import load_regression_df
 from processing_functions import create_fingerprint_df
-from ml_functions import get_lazy_xgbc_parameters
 from ml_functions import split_regression_df_with_grouping
 
 
@@ -31,9 +30,9 @@ def get_datasets() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     df_curated_final = pd.read_csv(
         "datasets/curated_data/class_curated_final.csv", index_col=0
     )
-    df_curated_scs = df_curated_scs[:500] # TODO
-    df_curated_biowin = df_curated_biowin[:500] # TODO
-    df_curated_final = df_curated_final[:500] # TODO
+    df_curated_scs = df_curated_scs[:100] # TODO
+    df_curated_biowin = df_curated_biowin[:100] # TODO
+    df_curated_final = df_curated_final[:100] # TODO
     return df_curated_scs, df_curated_biowin, df_curated_final
 
 
@@ -190,7 +189,7 @@ def check_external_test_in_ad(df_train: pd.DataFrame, df_test: pd.DataFrame):
 def calculate_tanimoto_similarity_class_huang():
     log.info("\n Define AD of classification data Huang and Zhang")
     _, _, df_class_huang = load_class_data_paper()
-    df_class_huang = df_class_huang[:500] # TODO
+    df_class_huang = df_class_huang[:100] # TODO
     model = XGBClassifier()
     calculate_tanimoto_similarity_class(df=df_class_huang, model_with_best_params=model)
 
@@ -198,22 +197,22 @@ def calculate_tanimoto_similarity_class_huang():
 def calculate_tanimoto_similarity_curated_scs():
     log.info("\n Define AD of df_curated_scs")
     df_curated_scs, _, _ = get_datasets()
-    best_params = get_lazy_xgbc_parameters()
-    model = XGBClassifier(**best_params) # TODO
+    # best_params = get_lazy_xgbc_parameters()
+    model = XGBClassifier() # TODO
     calculate_tanimoto_similarity_class(df=df_curated_scs, model_with_best_params=model)
 
 def calculate_tanimoto_similarity_curated_biowin():
     log.info("\n Define AD of df_curated_biowin")
     _, df_curated_biowin, df_curated_final = get_datasets()
-    best_params = get_lazy_xgbc_parameters()
-    model = XGBClassifier(**best_params) # TODO
+    # best_params = get_lazy_xgbc_parameters()
+    model = XGBClassifier() # TODO
     calculate_tanimoto_similarity_class(df=df_curated_biowin, model_with_best_params=model)
 
 def calculate_tanimoto_similarity_curated_final():
     log.info("\n Define AD of df_curated_final")
     _, _, df_curated_final = get_datasets()
-    best_params = get_lazy_xgbc_parameters()
-    model = XGBClassifier(**best_params) # TODO
+    # best_params = get_lazy_xgbc_parameters()
+    model = XGBClassifier() # TODO
     calculate_tanimoto_similarity_class(df=df_curated_final, model_with_best_params=model)
 
 

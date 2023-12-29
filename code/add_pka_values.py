@@ -57,6 +57,7 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
+
 # ----------------------------------------------------------------------------------
 # Code from MolGpKa
 
@@ -467,16 +468,16 @@ def predict_pKa_for_df(df: pd.DataFrame, smiles_col: str) -> pd.DataFrame:
             base_values_found = base_values
             acid_values_found = acid_values
         if len(acid_values_found) > 4:
-            log.warn(
-                "Found more than 4 acids!!! Only the 4 first items were taken!",
-                acid_values_found=acid_values_found,
-            )
+            # log.warn(
+            #     "Found more than 4 acids!!! Only the 4 first items were taken!",
+            #     acid_values_found=acid_values_found,
+            # )
             acid_values_found = acid_values_found[:4]
         if len(base_values_found) > 4:
-            log.warn(
-                "Found more than 4 acids!!! Only the 4 first items were taken!",
-                base_values_found=base_values_found,
-            )
+            # log.warn(
+            #     "Found more than 4 acids!!! Only the 4 first items were taken!",
+            #     base_values_found=base_values_found,
+            # )
             base_values_found = base_values_found[:4]
         for i_a in range(len(acid_values_found)):
             acid_values[i_a] = acid_values_found[i_a]
@@ -528,7 +529,7 @@ def predict_pKa_for_df(df: pd.DataFrame, smiles_col: str) -> pd.DataFrame:
 
 def load_regression_df_curated_scs_no_metal() -> pd.DataFrame:
     df_regression = pd.read_csv(
-        "datasets/curated_data/reg_curated_scs_no_metal.csv", index_col=0
+        "datasets/data_processing/reg_curated_scs_no_metal.csv", index_col=0
     )
     return df_regression
 
@@ -541,7 +542,7 @@ if __name__ == "__main__":
     if args.run_curated_no_metal:
         df = load_regression_df_curated_scs_no_metal()
         df_pred = predict_pKa_for_df(df=df, smiles_col="smiles")
-        df_pred.to_csv("datasets/curated_data/reg_curated_scs_no_metal.csv")
+        df_pred.to_csv("datasets/data_processing/reg_curated_scs_no_metal.csv")
     for df_path in args.paths_to_dfs_to_run:
         df = pd.read_csv(df_path, index_col=0)
         df_pred = predict_pKa_for_df(df=df, smiles_col="smiles")

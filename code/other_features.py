@@ -22,9 +22,7 @@ from typing import Dict, List, Tuple
 from tqdm import tqdm
 tqdm.pandas()
 
-from rdkit.Chem import AllChem
 from rdkit import Chem
-from rdkit.Chem.rdMolDescriptors import GetMACCSKeysFingerprint
 
 tqdm.pandas()
 
@@ -58,7 +56,7 @@ parser.add_argument(
 parser.add_argument(
     "--feature_type",
     type=str,
-    default="MACCS",
+    default="Molformer",
     choices=["MACCS", "RDK", "Morgan", "Molformer"],
     help="How to generate the features",
 )
@@ -268,7 +266,6 @@ def run_for_different_dfs():
             all_data=data,
             labels=labels,
             colors=colors,
-            nsplits=args.nsplits,
             title=title,
             seed=args.random_seed,
             plot_with_paper=True,
