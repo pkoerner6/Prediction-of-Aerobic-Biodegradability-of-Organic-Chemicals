@@ -65,6 +65,7 @@ def remove_smiles_with_incorrect_format(df: pd.DataFrame, col_name_smiles: str) 
     df_clean = df.copy()
     df_clean[col_name_smiles] = df_clean[col_name_smiles].apply(lambda x: "nan" if "*" in x or "|" in x else x)
     df_clean = df_clean[df_clean[col_name_smiles] != "nan"]
+    df_clean.reset_index(inplace=True, drop=True)
     return df_clean
 
 
@@ -739,6 +740,7 @@ def replace_smiles_with_smiles_with_chemical_speciation(df_without_env_smiles: p
     log.info("Deleted because no main component at pH 7.4: ", no_main_component=df_removed_no_main_component.inchi_from_smiles.nunique())
     log.info("Deleted because mixture: ", mixture=df_removed_mixture.inchi_from_smiles.nunique())
     df_with_env_smiles = df_without_env_smiles[df_without_env_smiles["smiles"] != "delete"].copy()
+    
     df_correct_smiles = remove_smiles_with_incorrect_format(df=df_with_env_smiles, col_name_smiles="smiles")
     df_with_env_smiles = openbabel_convert(
         df=df_correct_smiles,
@@ -746,6 +748,7 @@ def replace_smiles_with_smiles_with_chemical_speciation(df_without_env_smiles: p
         column_name_input="smiles",
         output_type="inchi",
     )
+
     assert len(df_with_env_smiles[df_with_env_smiles["smiles"] == "delete"]) == 0
     df_with_env_smiles.drop(columns=["reason"], inplace=True)
     return df_with_env_smiles, df_removed
@@ -935,7 +938,7 @@ def drop_rows_without_matching_cas(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def process_external_dataset_lunghini(df: pd.DataFrame, class_df: pd.DataFrame, env_smiles_lunghini: bool) -> pd.DataFrame:
+def process_external_dataset_lunghini(df: pd.DataFrame, class_df: pd.DataFrame, include_speciation_lunghini: bool) -> pd.DataFrame:
     df = check_if_cas_match_pubchem(df)
     df = drop_rows_without_matching_cas(df)
     class_df = remove_smiles_with_incorrect_format(df=class_df, col_name_smiles="smiles")
@@ -946,7 +949,7 @@ def process_external_dataset_lunghini(df: pd.DataFrame, class_df: pd.DataFrame, 
         output_type="inchi",
     )
     df.rename(columns={"best_cas": "cas"}, inplace=True)
-    if env_smiles_lunghini:
+    if include_speciation_lunghini:
         df, _ = replace_smiles_with_smiles_with_chemical_speciation(df_without_env_smiles=df)
 
     # Find data points for substances not already in class_df
@@ -958,7 +961,7 @@ def process_external_dataset_lunghini(df: pd.DataFrame, class_df: pd.DataFrame, 
 def get_external_dataset_lunghini(
     run_from_start: bool,
     class_df: pd.DataFrame,
-    env_smiles_lunghini: bool,
+    include_speciation_lunghini: bool,
 ) -> pd.DataFrame:
     if run_from_start:
         df_lunghini = pd.read_csv("datasets/lunghini.csv", sep=";", index_col=0)
@@ -987,7 +990,7 @@ def get_external_dataset_lunghini(
     
     df_lunghini_with_cas = pd.read_csv("datasets/external_data/lunghini_added_cas.csv", index_col=0)
 
-    df_new = process_external_dataset_lunghini(df=df_lunghini_with_cas, class_df=class_df, env_smiles_lunghini=env_smiles_lunghini)
+    df_new = process_external_dataset_lunghini(df=df_lunghini_with_cas, class_df=class_df, include_speciation_lunghini=include_speciation_lunghini)
     df_new = df_new[["cas", "smiles", "y_true"]].copy()
 
     df_smiles_no_star = remove_smiles_with_incorrect_format(df=df_new, col_name_smiles="smiles")
@@ -1006,7 +1009,7 @@ def is_unique(s):
     return (a[0] == a).all()
 
 
-def assign_group_label_and_drop_replicates(df: pd.DataFrame, by_column: str) -> pd.DataFrame:
+def assign_group_label_and_drop_replicates(df: pd.DataFrame, by_column: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     counted_duplicates = (
         df.groupby(df[by_column].tolist(), as_index=False).size().sort_values(by="size", ascending=False)
     )
@@ -1034,6 +1037,7 @@ def assign_group_label_and_drop_replicates(df: pd.DataFrame, by_column: str) -> 
 
 
 def reg_df_remove_studies_not_to_consider(df: pd.DataFrame) -> pd.DataFrame:
+    assert "ready" in df["endpoint"].unique()
     df = df[(df['time_day']==28.0) & (df["endpoint"]=="ready")] 
     df.reset_index(inplace=True, drop=True)
     return df
@@ -1042,7 +1046,7 @@ def reg_df_remove_studies_not_to_consider(df: pd.DataFrame) -> pd.DataFrame:
 def create_classification_data_based_on_regression_data(
     reg_df: pd.DataFrame, 
     with_lunghini: bool, 
-    env_smiles_lunghini: bool, 
+    include_speciation_lunghini: bool, 
     include_speciation: bool,
     prnt: bool
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:  # reg_df MUST be without speciation for it to work propperly
@@ -1057,7 +1061,7 @@ def create_classification_data_based_on_regression_data(
     df_multiples, df_singles, df_removed_due_to_variance = assign_group_label_and_drop_replicates(
         df=df_class, by_column="inchi_from_smiles"
     )
-    
+
     log.info("Substances removed due to variance", num_substances=df_removed_due_to_variance.inchi_from_smiles.nunique())
     assert len(df_multiples) + len(df_singles) + df_removed_due_to_variance["inchi_from_smiles"].nunique() == df_class["inchi_from_smiles"].nunique()
 
@@ -1065,7 +1069,7 @@ def create_classification_data_based_on_regression_data(
         df_lunghini_additional = get_external_dataset_lunghini(
             run_from_start=False, # TODO
             class_df=df_class,
-            env_smiles_lunghini=env_smiles_lunghini,
+            include_speciation_lunghini=include_speciation_lunghini,
         )
 
         df_singles = pd.concat([df_singles, df_lunghini_additional], axis=0)
@@ -1083,14 +1087,14 @@ def create_classification_data_based_on_regression_data(
 def create_classification_biowin(
     reg_df: pd.DataFrame,
     with_lunghini: bool,
-    env_smiles_lunghini: bool,
+    include_speciation_lunghini: bool,
     prnt: bool,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
     df_class, _ = create_classification_data_based_on_regression_data(
         reg_df,
         with_lunghini=with_lunghini,
-        env_smiles_lunghini=env_smiles_lunghini,
+        include_speciation_lunghini=include_speciation_lunghini,
         include_speciation=False,
         prnt=prnt,
     )
@@ -1379,7 +1383,8 @@ def load_and_process_echa_additional(include_speciation: bool) -> Tuple[pd.DataF
         "guideline",
         "principle",
     ]
-    cols_to_keep += get_speciation_col_names()
+    if include_speciation:
+        cols_to_keep += get_speciation_col_names()
     df_echa = df_echa[cols_to_keep]
     df_echa.rename(columns={"biodegradation_samplingtime": "time_day"}, inplace=True)
     df_echa = df_echa[df_echa["cas"] == df_echa["ref_cas"]]
@@ -1396,7 +1401,7 @@ def load_and_process_echa_additional(include_speciation: bool) -> Tuple[pd.DataF
     echa_additional_class, _ = create_classification_data_based_on_regression_data(
         reg_df=echa_additional_class,
         with_lunghini=False,
-        env_smiles_lunghini=False,
+        include_speciation_lunghini=False,
         include_speciation=include_speciation,
         prnt=False,
     )
@@ -1461,219 +1466,13 @@ def create_dfs_for_curated_data_analysis() -> Tuple[
     )
 
 
-
-def add_smiles_ccc(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    log.info("Entries in that were not checked by Gluege", entries=len(df))
-
-    def get_smiles_inchi(row):
-        cas = row["cas"]
-        smiles, cas = get_info_cas_common_chemistry(cas)
-        return pd.Series([smiles, cas])
-
-    df[["smiles_from_ccc", "inchi_from_ccc"]] = df.progress_apply(func=get_smiles_inchi, axis=1)
-    df_smiles_found = df[df["smiles_from_ccc"] != ""].copy()
-    df_smiles_not_found = df[df["smiles_from_ccc"] == ""].copy()
-    log.info("SMILES found on CCC", num=len(df_smiles_found))
-
-    df_multiple_components = df_smiles_found[df_smiles_found["smiles_from_ccc"].str.contains(".", regex=False)]
-    if len(df_multiple_components) > 0:
-        log.warn("Found SMILES with multiple components in data", num=len(df_multiple_components))
-
-    df_smiles_found = df_smiles_found[~df_smiles_found["smiles_from_ccc"].str.contains(".", regex=False)]
-    df_smiles_found.rename(columns={"smiles_from_ccc": "smiles", "inchi_from_ccc": "inchi"}, inplace=True)
-    return df_smiles_found, df_smiles_not_found, df_multiple_components
-
-
-def process_multiple_comp_data(
-    df_multiple_components: pd.DataFrame, df_smiles_not_found: pd.DataFrame
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    df_for_multiple = pd.concat([df_multiple_components, df_smiles_not_found], ignore_index=True)
-    log.info("Need to run process_multiple_component_data for this many datapoints: ", entries=len(df_for_multiple))
-
-    df_pubchem = get_smiles_from_cas_pubchempy(df_for_multiple)
-    df_multiple = get_smiles_from_cas_comptox(df=df_pubchem)
-    col_names_smiles_to_inchi = [
-        "isomeric_smiles_pubchem",
-        "smiles_comptox",
-    ]
-    df_multiple = openbabel_convert_smiles_to_inchi_with_nans(
-        col_names_smiles_to_inchi=col_names_smiles_to_inchi, df=df_multiple
-    )
-
-    inchi_pubchem = "inchi_from_isomeric_smiles_pubchem"
-    inchi_comptox = "inchi_from_smiles_comptox"
-    df_no_smiles_pubchem_comptox = df_multiple[(df_multiple[inchi_pubchem] == "") & (df_multiple[inchi_comptox] == "")]
-    df_no_smiles_pubchem = df_multiple[(df_multiple[inchi_pubchem] == "") & (df_multiple[inchi_comptox] != "")]
-    df_no_smiles_comptox = df_multiple[(df_multiple[inchi_pubchem] != "") & (df_multiple[inchi_comptox] == "")]
-    df_no_match_smiles_pubchem_comptox = df_multiple[
-        (df_multiple[inchi_pubchem] != df_multiple[inchi_comptox])
-        & ((df_multiple[inchi_pubchem] != "") & (df_multiple[inchi_comptox] != ""))
-    ]
-    df_match_smiles_pubchem_comptox = df_multiple[
-        (df_multiple[inchi_pubchem] == df_multiple[inchi_comptox])
-        & ((df_multiple[inchi_pubchem] != "") & (df_multiple[inchi_comptox] != ""))
-    ]
-    df_multiple_components_smiles_found = df_match_smiles_pubchem_comptox[
-        ["name", "cas", "label", "biowin1", "biowin2", "isomeric_smiles_pubchem", inchi_pubchem]
-    ].rename(
-        columns={
-            "isomeric_smiles_pubchem": "smiles",
-            inchi_pubchem: "inchi",
-        }
-    )
-    df_multiple_components_smiles_not_found = df_multiple[
-        ~df_multiple["cas"].isin(list(df_multiple_components_smiles_found["cas"]))
-    ]
-    text_to_df = {
-        "NO SMILES on PubChem and Comptox": df_no_smiles_pubchem_comptox,
-        "No SMILES on PubChem but on Comptox": df_no_smiles_pubchem,
-        "SMILES on PubChem but NOT on Comptox": df_no_smiles_comptox,
-        "InChI from SMILES from PubChem and Comptox do NOT match": df_no_match_smiles_pubchem_comptox,
-        "InChI from SMILES from PubChem and Comptox match": df_match_smiles_pubchem_comptox,
-        "NO SMILES found yet (after PubChem and Comptox)": df_multiple_components_smiles_not_found,
-    }
-    for text, df in text_to_df.items():
-        log.info(f"CAS for which {text}", entries=len(df))
-    return df_multiple_components_smiles_found, df_multiple_components_smiles_not_found
-
-
-def process_multiple_comps_smiles_not_found(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    log.info("Process datapoints for which no SMILES found yet")
-    df = get_inchi_main_layer(df=df, inchi_col="inchi_from_isomeric_smiles_pubchem", layers=4)
-    df = get_inchi_main_layer(df=df, inchi_col="inchi_from_smiles_comptox", layers=4)
-
-    # Check if inchi main layers from PubChem and Comptox match; if yes keep the datapoint
-    inchi_pubchem_ml = "inchi_from_isomeric_smiles_pubchem_main_layer"
-    inchi_comptox_ml = "inchi_from_smiles_comptox_main_layer"
-    df_no_match_inchi_main_layer_pubchem_comptox = df[
-        (df[inchi_pubchem_ml] != df[inchi_comptox_ml]) & ((df[inchi_pubchem_ml] != "") & (df[inchi_comptox_ml] != ""))
-    ]
-    df_match_inchi_main_layer_pubchem_comptox = df[
-        (df[inchi_pubchem_ml] == df[inchi_comptox_ml]) & ((df[inchi_pubchem_ml] != "") & (df[inchi_comptox_ml] != ""))
-    ]
-    df_smiles_found_main_layer = df_match_inchi_main_layer_pubchem_comptox[
-        ["name", "cas", "isomeric_smiles_pubchem", "inchi_from_isomeric_smiles_pubchem"]
-    ].rename(
-        columns={"isomeric_smiles_pubchem": "smiles", "inchi_from_isomeric_smiles_pubchem": "inchi"}
-    )  # if main layer matches, take smiles from pubchem
-
-    df_smiles_not_found = df[~df["cas"].isin(list(df_smiles_found_main_layer["cas"]))]
-
-    # For the substances that have only a SMILES from pubchem, check cirpy
-    def add_cirpy_info(row):
-        cas = row["cas"]
-        smile_cirpy, inchi_cirpy = get_smiles_inchi_cirpy(cas)
-        return pd.Series([smile_cirpy, inchi_cirpy])
-
-    df_smiles_not_found[["smiles_from_cas_cirpy", "inchi_from_cas_cirpy"]] = df_smiles_not_found.progress_apply(
-        func=add_cirpy_info, axis=1
-    )
-
-    df_smiles_not_found = openbabel_convert_smiles_to_inchi_with_nans(
-        col_names_smiles_to_inchi=["smiles_from_cas_cirpy"],
-        df=df_smiles_not_found,
-    )
-    # Check if smiles from cirpy and pubchem match
-    df_pubchem_cirpy_match = df_smiles_not_found[
-        (
-            df_smiles_not_found["inchi_from_isomeric_smiles_pubchem"]
-            == df_smiles_not_found["inchi_from_smiles_from_cas_cirpy"]
-        )
-        & (df_smiles_not_found["inchi_from_isomeric_smiles_pubchem"] != "")
-        & (df_smiles_not_found["inchi_from_smiles_from_cas_cirpy"] != "")
-    ]
-    df_pubchem_cirpy_match = df_pubchem_cirpy_match[
-        ["name", "cas", "label", "biowin1", "biowin2", "isomeric_smiles_pubchem", "inchi_from_isomeric_smiles_pubchem"]
-    ].rename(
-        columns={
-            "isomeric_smiles_pubchem": "smiles",
-            "inchi_from_isomeric_smiles_pubchem": "inchi",
-        }
-    )  # if inchi from pubchem and cirpy match, take smiles from pubchem
-    df_smiles_found = df_pubchem_cirpy_match.copy()
-    df_smiles_not_found = df_smiles_not_found[~(df_smiles_not_found["cas"].isin(df_smiles_found["cas"]))]
-
-    text_to_df = {
-        "CAS for which InChI main layer from PubChem and Comptox match": df_match_inchi_main_layer_pubchem_comptox,
-        "CAS for which InChI main layer from PubChem and Comptox do Not match": df_no_match_inchi_main_layer_pubchem_comptox,
-        "Entries for which SMILES only in pubchem found and this matches with cirpy": df_pubchem_cirpy_match,
-        "CAS for which SMILES found": df_smiles_found,
-        "CAS for which no SMILES found yet": df_smiles_not_found,
-    }
-    for text, df in text_to_df.items():
-        log.info(f"{text}", entries=len(df))
-    return df_smiles_found, df_smiles_not_found
-
-
-def process_data_not_checked_by_gluege(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    df_smiles_found, df_smiles_not_found, df_multiple_comps = add_smiles_ccc(df=df)
-    df_multiple_found1, df_multiple_not_found1 = process_multiple_comp_data(
-        df_multiple_components=df_multiple_comps,
-        df_smiles_not_found=df_smiles_not_found,
-    )
-    df_multiple_found2, df_multiple_not_found2 = process_multiple_comps_smiles_not_found(df_multiple_not_found1)
-
-    df_multiple_comps_smiles_found = pd.concat([df_multiple_found1, df_multiple_found2])
-    df_not_found = df_multiple_not_found2.copy()
-    df_found = pd.concat([df_smiles_found, df_multiple_comps_smiles_found])
-    assert (len(df_found) + len(df_not_found)) == len(df)
-
-    return df_found, df_not_found
-
-
-def aggregate_duplicates(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    df = df.astype(
-        {
-            "cas": str,
-            "name": str,
-            "label": float,
-            "biowin1": float,
-            "biowin2": float,
-            "smiles": str,
-            "inchi_from_smiles": str,
-        }
-    )
-    aggregation_functions = {
-        "cas": "first",
-        "name": "first",
-        "label": "mean",
-        "biowin1": "mean",
-        "biowin2": "mean",
-        "smiles": "first",
-        "inchi_from_smiles": "first",
-    }
-    df = df.groupby(["cas"]).aggregate(aggregation_functions).reset_index(drop=True)
-    return df
-
-
-def add_smiles(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    df_checked = load_gluege_data()
-    cas_in_checked = [cas for cas in df.cas if cas in df_checked.cas]
-    log.info("This many cas are checked by Gluege", cas=len(cas_in_checked))
-    df_found, _ = process_data_not_checked_by_gluege(df=df)
-
-    df_found = replace_multiple_cas_for_one_inchi(df=df_found, prnt=False)
-    df_found_scs, _ = replace_smiles_with_smiles_with_chemical_speciation(df_found.copy())
-
-    df_found, _ = remove_organo_metals_function(df=df_found, smiles_column="smiles")
-    df_found_scs, _ = remove_organo_metals_function(df=df_found_scs, smiles_column="smiles")
-
-    df_found = df_found[["cas", "name", "label", "biowin1", "biowin2", "smiles", "inchi_from_smiles"]]
-    df_found_scs = df_found[["cas", "name", "label", "biowin1", "biowin2", "smiles", "inchi_from_smiles"]]
-
-    df_found_agg = aggregate_duplicates(df=df_found)
-    df_found_scs_agg = aggregate_duplicates(df=df_found_scs)
-
-    return df_found_agg, df_found_scs_agg
-
-
 def get_labels_colors_progress() -> Tuple[List[str], List[str]]:
     labels = [
         "Huang-Dataset \n reported",
         "Huang-Dataset \n replicated",
-        "$\mathregular{Curated_{SCS}}$",
-        "$\mathregular{Curated_{BIOWIN}}$",
-        "$\mathregular{Curated_{FINAL}}$",
+        r"$\mathregular{Curated_{SCS}}$",
+        r"$\mathregular{Curated_{BIOWIN}}$",
+        r"$\mathregular{Curated_{FINAL}}$",
     ]
     colors = [
         "white",
@@ -1720,9 +1519,3 @@ def plot_results_with_standard_deviation(
     )
     plt.close()
 
-
-def create_fingerprint_df(df: pd.DataFrame) -> pd.DataFrame:
-    mols = [AllChem.MolFromSmiles(smiles) for smiles in df["smiles"]]
-    fps = [np.array(GetMACCSKeysFingerprint(mol)) for mol in mols]
-    df_fp = pd.DataFrame(data=fps)
-    return df_fp

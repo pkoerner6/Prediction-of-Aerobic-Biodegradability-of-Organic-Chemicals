@@ -16,7 +16,7 @@ from code_files.ml_functions import print_class_results
 from code_files.ml_functions import split_classification_df_with_fixed_test_set
 from code_files.ml_functions import skf_class_fixed_testset
 from code_files.ml_functions import get_balanced_data_adasyn
-from code_files.ml_functions import run_balancing_and_training # TODO
+from code_files.ml_functions import run_balancing_and_training
 from code_files.ml_functions import skf_classification
 from code_files.ml_functions import split_regression_df_with_grouping
 from code_files.ml_functions import split_regression_df_with_grouping_and_fixed_test_set
@@ -24,8 +24,8 @@ from code_files.ml_functions import create_train_test_sets_regression
 from code_files.ml_functions import kf_regression
 from code_files.ml_functions import report_perf_hyperparameter_tuning
 from code_files.ml_functions import get_Huang_Zhang_regression_parameters
-from code_files.ml_functions import train_XGBRegressor_Huang_Zhang # TODO
-from code_files.ml_functions import train_XGBClassifier # TODO
+from code_files.ml_functions import train_XGBRegressor_Huang_Zhang
+from code_files.ml_functions import train_XGBClassifier
 from code_files.ml_functions import train_XGBClassifier_on_all_data
 from code_files.ml_functions import plot_regression_error
 from code_files.ml_functions import analyze_regression_results_and_plot
@@ -42,7 +42,7 @@ def test_get_class_results():
     assert specificity == 0.5
 
 
-def test_split_classification_df_with_fixed_test_set(class_df_long, class_improved):
+def test_split_classification_df_with_fixed_test_set(class_df_long, class_curated):
     nsplits = 3
     df_test = class_df_long.copy()[:10]
     cols = ["cas", "smiles"]
@@ -52,6 +52,7 @@ def test_split_classification_df_with_fixed_test_set(class_df_long, class_improv
         nsplits=nsplits,
         random_seed=42,
         cols=cols,
+        paper=False,
     )
     assert len(train_sets1) == nsplits
     assert len(test_sets1) == nsplits
@@ -60,11 +61,12 @@ def test_split_classification_df_with_fixed_test_set(class_df_long, class_improv
             for i in range(nsplits):
                 assert cas not in train_sets1[i]["cas"]
     train_sets2, test_sets2 = split_classification_df_with_fixed_test_set(
-        df=class_improved,
+        df=class_curated,
         df_test=df_test,
         nsplits=nsplits,
         random_seed=42,
         cols=cols,
+        paper=False,
     )
     for i in range(nsplits):
         assert test_sets1[i]["cas"].to_list() == test_sets2[i]["cas"].to_list()
@@ -93,6 +95,7 @@ def test_skf_class_fixed_testset(class_df_long):
         random_seed=42,
         include_speciation=False,
         cols=cols,
+        paper=False,
     )
     lsts = [x_train_fold_lst, y_train_fold_lst, x_test_fold_lst, y_test_fold_lst, df_test_lst, test_set_sizes]
     for lst in lsts:
@@ -108,6 +111,7 @@ def test_skf_class_fixed_testset(class_df_long):
         random_seed=42,
         include_speciation=False,
         cols=cols,
+        paper=False,
     )
     for i in range(len(x_test_fold_lst)):
         assert x_test_fold_lst[i].tolist() == x_test_fold_lst2[i].tolist()
@@ -121,20 +125,25 @@ def test_skf_class_fixed_testset(class_df_long):
         random_seed=42,
         include_speciation=True,
         cols=cols,
+        paper=False,
     )
     assert (cols + ["inchi_from_smiles", "y_true"]) == list(df_test_lst3[0].columns)
 
 
-def test_get_balanced_data_adasyn():
+def test_get_balanced_data_adasyn(class_df_long):
     nsplits = 3
     cols = ["cas", "smiles"]
     _, _, class_df = load_class_data_paper()
+    df_test = class_df_long.copy()[:10]
     x_train_fold_lst, y_train_fold_lst, _, _, _, _ = skf_class_fixed_testset( # TODO
         df=class_df,
+        df_test=df_test,
         nsplits=nsplits,
         random_seed=42,
         include_speciation=False,
         cols=cols,
+        paper=False,
+
     )
     for x_train, y_train in zip(x_train_fold_lst, y_train_fold_lst):
         class_1 = len(y_train[y_train == 1])

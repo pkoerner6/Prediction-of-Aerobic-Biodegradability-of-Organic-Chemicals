@@ -159,13 +159,13 @@ regression_dict_full = {
     },
     "reliability": {0: 2, 1: 1, 2: 1, 3: 2, 4: 2, 5: 1, 6: 1},
     "endpoint": {
-        0: "Ready",
-        1: "Ready",
-        2: "Ready",
-        3: "Ready",
-        4: "Ready",
-        5: "Ready",
-        6: "Ready",
+        0: "ready",
+        1: "ready",
+        2: "ready",
+        3: "ready",
+        4: "ready",
+        5: "ready",
+        6: "ready",
     },
     "guideline": {
         0: "OECD Guideline 301 C",
@@ -343,15 +343,15 @@ regression_dict_with_star = {
     },
     "reliability": {0: 2, 1: 1, 2: 1, 3: 2, 4: 2, 5: 1, 6: 1, 7: 1, 8: 1},
     "endpoint": {
-        0: "Ready",
-        1: "Ready",
-        2: "Ready",
-        3: "Ready",
-        4: "Ready",
-        5: "Ready",
-        6: "Ready",
-        7: "Ready",
-        8: "Inherent",
+        0: "ready",
+        1: "ready",
+        2: "ready",
+        3: "ready",
+        4: "ready",
+        5: "ready",
+        6: "ready",
+        7: "ready",
+        8: "inherent",
     },
     "guideline": {
         0: "OECD Guideline 301 C",
@@ -438,13 +438,13 @@ regression_dict = {
     },
     "reliability": {0: 2, 1: 1, 2: 1, 3: 2, 4: 2, 5: 1, 6: 1},
     "endpoint": {
-        0: "Ready",
-        1: "Ready",
-        2: "Ready",
-        3: "Ready",
-        4: "Ready",
-        5: "Ready",
-        6: "Ready",
+        0: "ready",
+        1: "ready",
+        2: "ready",
+        3: "ready",
+        4: "ready",
+        5: "ready",
+        6: "ready",
     },
     "guideline": {
         0: "OECD Guideline 301 C",
@@ -474,7 +474,7 @@ regression_dict = {
         5: 0.85,
         6: 0.86,
     },
-    "inchi": {
+    "inchi_from_smiles": {
         0: "InChI=1S/CHCl3/c2-1(3)4/h1H/i1D",
         1: "InChI=1S/C12H12N2.2BrH/c1-3-7-13-9-10-14-8-4-2-6-12(14)11(13)5-1;;/h1-8H,9-10H2;2*1H/q+2;;/p-2",
         2: "InChI=1S/2BO3.3Ca/c2*2-1(3)4;;;/q2*-3;3*+2",
@@ -1297,7 +1297,7 @@ df_lunghini_added_cas_dict = {
         4: "QXSZNDIIPUOQMB-UHFFFAOYSA-N",
         5: "RUBIQRSGTVJYHR-UHFFFAOYSA-N",
     },
-    "inchi": {
+    "inchi_from_smiles": {
         0: "InChI=1S/C8H7Br/c9-7-6-8-4-2-1-3-5-8/h1-7H/b7-6+",
         1: "InChI=1S/C2H2Br2/c3-1-2-4/h1-2H/b2-1-",
         2: "InChI=1S/C8H7Br/c9-7-6-8-4-2-1-3-5-8/h1-7H/b7-6-",
@@ -1923,7 +1923,7 @@ metal_smiles_dict = {
     }
 }
 
-df_improved_class_dict = {
+df_curated_class_dict = {
     "cas": {0: "100-09-4", 1: "100-10-7", 2: "100-14-1", 3: "100-26-5", 4: "100-37-8", 5: "100-40-3", 6: "100-41-4"},
     "smiles": {
         0: "COC1=CC=C(C=C1)C([O-])=O",
@@ -1958,7 +1958,7 @@ df_improved_class_dict = {
     },
 }
 
-df_improved_reg_dict = {
+df_curated_reg_dict = {
     "cas": {3: "100-00-5", 4: "100-01-6", 5: "100-02-7", 6: "100-09-4", 14: "100-37-8"},
     "smiles": {
         3: "ClC1=CC=C(C=C1)N(=O)=O",
@@ -1987,7 +1987,7 @@ df_improved_reg_dict = {
     "biodegradation_percent": {3: 0.2565, 4: 0.0, 5: 0.043, 6: 0.89, 14: 0.65},
 }
 
-class_improved_dict = {
+class_curated_dict = {
     "cas": {0: "100-09-4", 1: "100-10-7", 2: "100-14-1", 3: "100-26-5", 4: "100-36-7", 5: "100-37-8"},
     "smiles": {
         0: "COC1=CC=C(C=C1)C(O)=O",
@@ -2049,7 +2049,7 @@ df_for_aggregate_dict = {
         5: 2,
         6: 2,
     },
-    "endpoint": {0: "Ready", 1: "Ready", 2: "Ready", 3: "Ready", 4: "Ready", 5: "Ready", 6: "Inherent"},
+    "endpoint": {0: "ready", 1: "ready", 2: "ready", 3: "ready", 4: "ready", 5: "ready", 6: "inherent"},
     "guideline": {
         0: "OECD Guideline 301 C",
         1: "OECD Guideline 301 C",
@@ -2235,20 +2235,20 @@ def metal_smiles() -> pd.DataFrame:
 
 
 @pytest.fixture
-def df_improved_class() -> pd.DataFrame:
-    df = pd.DataFrame.from_dict(df_improved_class_dict)
+def df_curated_class() -> pd.DataFrame:
+    df = pd.DataFrame.from_dict(df_curated_class_dict)
     return df
 
 
 @pytest.fixture
-def df_improved_reg() -> pd.DataFrame:
-    df = pd.DataFrame.from_dict(df_improved_reg_dict)
+def df_curated_reg() -> pd.DataFrame:
+    df = pd.DataFrame.from_dict(df_curated_reg_dict)
     return df
 
 
 @pytest.fixture
-def class_improved() -> pd.DataFrame:
-    df = pd.DataFrame.from_dict(class_improved_dict)
+def class_curated() -> pd.DataFrame:
+    df = pd.DataFrame.from_dict(class_curated_dict)
     return df
 
 

@@ -857,41 +857,6 @@ def convert_reaction_time_to_days(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# def additionality_to_paper(df_echa: pd.DataFrame) -> None:
-
-#     def load_regression_df() -> pd.DataFrame:
-#         df_regression = pd.read_excel("datasets/external_data/Huang_Zhang_RegressionDataset.xlsx", index_col=0)
-#         df_regression.rename(
-#             columns={
-#                 "Substance Name": "name",
-#                 "Name type": "name_type",
-#                 "CAS Number": "cas",
-#                 "Smiles": "smiles",
-#                 "Reliability": "reliability",
-#                 "Endpoint": "endpoint",
-#                 "Guideline": "guideline",
-#                 "Principle": "principle",
-#                 "Time (day)": "time_day",
-#                 "Biodegradation (0.1 means 10%)": "biodegradation_percent",
-#             },
-#             inplace=True,
-#         )
-#         return df_regression
-
-#     df_reg = load_regression_df()
-
-#     log.info("Data points in df_reg: ", echem_entries=len(df_reg))
-#     log.info("Unique cas in df_reg: ", echem_cas=df_reg["cas"].nunique())
-#     df_echa_not_in_regression = df_echa[~df_echa["cas"].isin(df_reg["cas"])]
-#     log.info("Echa data not in regression dataset from Huang et al.: ", new_data=len(df_echa_not_in_regression))
-#     log.info(
-#         "Unique new cas in echa data and not in regression dataset: ",
-#         new_cas=df_echa_not_in_regression["cas"].nunique(),
-#     )
-#     df_echa_not_in_regression.reset_index(inplace=True, drop=True)
-#     df_echa_not_in_regression.to_csv("datasets/biodegradation_echa_data_not_in_regression.csv")
-
-
 def process_echa_data(df: pd.DataFrame) -> pd.DataFrame:
     log.info("Biodegradation data points before processing", entries=len(df))
     log.info("Number of unique chemicals before processing: ", substance_ids=df["substance_id"].nunique())
@@ -901,7 +866,6 @@ def process_echa_data(df: pd.DataFrame) -> pd.DataFrame:
     log.info("Biodegradation data points after processing", entries=len(df))
     log.info("Number of unique chemicals after processing: ", substance_ids=df["substance_id"].nunique())
     df.reset_index(inplace=True, drop=True)
-    # additionality_to_paper(df)
     return df
 
 

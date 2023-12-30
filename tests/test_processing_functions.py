@@ -43,17 +43,17 @@ from code_files.processing_functions import check_if_cas_match_pubchem
 from code_files.processing_functions import drop_rows_without_matching_cas
 from code_files.processing_functions import process_external_dataset_lunghini
 from code_files.processing_functions import get_external_dataset_lunghini
-from code_files.processing_functions import assign_group_label_and_drop_replicates # TODO
-from code_files.processing_functions import reg_df_remove_studies_not_to_consider # TODO
+from code_files.processing_functions import assign_group_label_and_drop_replicates 
+from code_files.processing_functions import reg_df_remove_studies_not_to_consider
 from code_files.processing_functions import create_classification_data_based_on_regression_data
 from code_files.processing_functions import create_classification_biowin
 from code_files.processing_functions import create_input_regression
 from code_files.processing_functions import encode_categorical_data
-from code_files.processing_functions import bit_vec_to_lst_of_lst # TODO
+from code_files.processing_functions import bit_vec_to_lst_of_lst
 from code_files.processing_functions import create_input_classification
-from code_files.processing_functions import convert_to_morgan_fingerprints # TODO
+from code_files.processing_functions import convert_to_morgan_fingerprints
 from code_files.processing_functions import convert_to_maccs_fingerprints 
-from code_files.processing_functions import convert_to_rdk_fingerprints # TODO
+from code_files.processing_functions import convert_to_rdk_fingerprints
 from code_files.processing_functions import get_speciation_col_names
 from code_files.processing_functions import convert_regression_df_to_input
 from code_files.processing_functions import load_gluege_data
@@ -64,15 +64,6 @@ from code_files.processing_functions import get_smiles_inchi_cirpy
 from code_files.processing_functions import further_processing_of_echa_data
 from code_files.processing_functions import load_and_process_echa_additional
 from code_files.processing_functions import get_df_with_unique_cas
-from code_files.processing_functions import add_smiles_ccc # TODO
-from code_files.processing_functions import process_multiple_comp_data # TODO
-from code_files.processing_functions import process_multiple_comps_smiles_not_found # TODO
-from code_files.processing_functions import process_data_not_checked_by_gluege # TODO
-from code_files.processing_functions import aggregate_duplicates # TODO
-from code_files.processing_functions import add_smiles # TODO
-from code_files.processing_functions import get_labels_colors_progress # TODO
-from code_files.processing_functions import plot_results_with_standard_deviation # TODO
-from code_files.processing_functions import create_fingerprint_df # TODO
 
 
 
@@ -84,14 +75,14 @@ def test_openbabel_convert(regression_paper):
         output_type="inchi",
     )
     assert "inchi_from_smiles" in df_output.columns
-    assert list(df_output["inchi"]) == list(df_output["inchi_from_smiles"])
+    assert list(df_output["inchi_from_smiles"]) == list(df_output["inchi_from_smiles"])
     df_output = openbabel_convert(
         df=regression_paper,
         input_type="inchi",
-        column_name_input="inchi",
+        column_name_input="inchi_from_smiles",
         output_type="smiles",
     )
-    assert "smiles_from_inchi" in df_output.columns
+    assert "smiles_from_inchi_from_smiles" in df_output.columns
 
 
 def test_remove_smiles_with_incorrect_format(regression_paper_with_star):
@@ -132,7 +123,7 @@ def test_group_and_label_chemicals(group_remove_duplicates):
 
 
 def test_get_cid_from_inchi_pubchempy():
-    df_lunghini = pd.read_csv("dataframes/lunghini.csv", sep=";", index_col=0)[:6]
+    df_lunghini = pd.read_csv("datasets/external_data/lunghini.csv", sep=";", index_col=0)[:6]
     df_lunghini.rename(
         columns={
             "SMILES": "smiles",
@@ -240,7 +231,7 @@ def test_get_inchi_layers(df_lunghini_added_cas):
 
 
 def test_add_cas_from_pubchem():
-    df = pd.read_csv("dataframes/lunghini_added_cids.csv")[:6]
+    df = pd.read_csv("datasets/external_data/lunghini_added_cids.csv")[:6]
     df = add_cas_from_pubchem(df=df)
     for col in ["cas_pubchem", "cas_ref_pubchem", "deprecated_cas_pubchem"]:
         assert col in list(df.columns)
@@ -463,19 +454,19 @@ def test_get_smiles_from_cas_pubchempy(df_b):
         "8029-68-3",
     ]
     assert list(df_pubchem["isomeric_smiles_pubchem"]) == [
-        "C1=CC=C2C(=C1)C3=NC4=NC(=NC5=C6C=CC=CC6=C([N-]5)N=C7C8=CC=CC=C8C(=N7)N=C2[N-]3)C9=CC=CC=C94.[Fe+2]",
+        "",
         "[O-]Cl(=O)=O.[Na+]",
         "",
         "C(=O)(N)NO",
     ]
     assert list(df_pubchem["canonical_smiles_pubchem"]) == [
-        "C1=CC=C2C(=C1)C3=NC4=NC(=NC5=C6C=CC=CC6=C([N-]5)N=C7C8=CC=CC=C8C(=N7)N=C2[N-]3)C9=CC=CC=C94.[Fe+2]",
+        "",
         "[O-]Cl(=O)=O.[Na+]",
         "",
         "C(=O)(N)NO",
     ]
     assert list(df_pubchem["inchi_pubchem"]) == [
-        "InChI=1S/C32H16N8.Fe/c1-2-10-18-17(9-1)25-33-26(18)38-28-21-13-5-6-14-22(21)30(35-28)40-32-24-16-8-7-15-23(24)31(36-32)39-29-20-12-4-3-11-19(20)27(34-29)37-25;/h1-16H;/q-2;+2",
+        "",
         "InChI=1S/ClHO3.Na/c2-1(3)4;/h(H,2,3,4);/q;+1/p-1",
         "",
         "InChI=1S/CH4N2O2/c2-1(4)3-5/h5H,(H3,2,3,4)",
@@ -491,15 +482,15 @@ def test_turn_cas_column_into_string(df_pubchem):
     df_pubchem.apply(check_cas_string, axis=1)
 
 
-# def test_get_smiles_from_cas_comptox(df_pubchem): # TODO
-#     df_comptox = get_smiles_from_cas_comptox(df=df_pubchem)
-#     assert list(df_comptox["smiles_comptox"]) == [
-#         np.nan,
-#         r"NC1CCCC2=C1C=CC=C2",
-#         r"[Co++].[N-]1\C2=N/C3=N/C(=N\C4=C5C=CC=CC5=C([N-]4)\N=C4/N=C(/N=C1/C1=CC=CC=C21)C1=CC=CC=C41)/C1=CC=CC=C31",
-#         r"[H+].[Cr+3].[O-]C1=CC=C(Cl)C=C1\N=N\C1=C2C=CC=CC2=CC=C1[O-].[O-]C1=CC=C(Cl)C=C1\N=N\C1=C2C=CC=CC2=CC=C1[O-]",
-#         r"[Cu].I.C1=CC=C(C=C1)P(C1=CC=CC=C1)C1=CC=CC=C1",
-#     ]
+def test_get_smiles_from_cas_comptox(df_pubchem):
+    df_comptox = get_smiles_from_cas_comptox(df=df_pubchem)
+    assert list(df_comptox["smiles_comptox"]) == [
+        np.nan,
+        r"NC1CCCC2=C1C=CC=C2",
+        r"[Co++].[N-]1\C2=N/C3=N/C(=N\C4=C5C=CC=CC5=C([N-]4)\N=C4/N=C(/N=C1/C1=CC=CC=C21)C1=CC=CC=C41)/C1=CC=CC=C31",
+        r"[H+].[Cr+3].[O-]C1=CC=C(Cl)C=C1\N=N\C1=C2C=CC=CC2=CC=C1[O-].[O-]C1=CC=C(Cl)C=C1\N=N\C1=C2C=CC=CC2=CC=C1[O-]",
+        r"[Cu].I.C1=CC=C(C=C1)P(C1=CC=CC=C1)C1=CC=CC=C1",
+    ]
 
 
 def test_get_info_cas_common_chemistry(df_b):
@@ -537,72 +528,35 @@ def test_get_info_cas_common_chemistry(df_b):
     ]
 
 
-def test_add_biowin_label(df_improved_class, df_improved_reg):
-    df_improved_reg = add_biowin_label(df=df_improved_reg, mode="reg")
-    assert df_improved_reg["linear_label"].to_list() == [0.0, 0.0, 0.0, 1.0, "None"]
-    assert df_improved_reg["non_linear_label"].to_list() == [0.0, 0.0, 0.0, 1.0, "None"]
-    assert df_improved_reg["miti_linear_label"].to_list() == [0.0, 0.0, 0.0, 1.0, "None"]
-    assert df_improved_reg["miti_non_linear_label"].to_list() == [0.0, 0.0, 0.0, 1.0, "None"]
-    assert df_improved_reg["label"].to_list() == [0, 0, 0, 1, 0]
+def test_add_biowin_label(df_curated_class, df_curated_reg):
+    df_curated_reg = add_biowin_label(df=df_curated_reg, mode="reg")
+    assert df_curated_reg["linear_label"].to_list() == [0.0, 0.0, 0.0, 1.0, "None"]
+    assert df_curated_reg["non_linear_label"].to_list() == [0.0, 0.0, 0.0, 1.0, "None"]
+    assert df_curated_reg["miti_linear_label"].to_list() == [0.0, 0.0, 0.0, 1.0, "None"]
+    assert df_curated_reg["miti_non_linear_label"].to_list() == [0.0, 0.0, 0.0, 1.0, "None"]
+    assert df_curated_reg["label"].to_list() == [0, 0, 0, 1, 0]
 
-    df_improved_class = add_biowin_label(df=df_improved_class, mode="class")
-    assert df_improved_class["linear_label"].to_list() == [1.0, 1.0, 0.0, 1.0, "None", 1.0, 1.0]
-    assert df_improved_class["non_linear_label"].to_list() == [1.0, 1.0, 0.0, 1.0, "None", 1.0, 1.0]
-    assert df_improved_class["miti_linear_label"].to_list() == [1.0, 1.0, 0.0, 1.0, "None", 0.0, 0.0]
-    assert df_improved_class["miti_non_linear_label"].to_list() == [1.0, 1.0, 0.0, 1.0, "None", 1.0, 0.0]
+    df_curated_class = add_biowin_label(df=df_curated_class, mode="class")
+    assert df_curated_class["linear_label"].to_list() == [1.0, 1.0, 0.0, 1.0, "None", 1.0, 1.0]
+    assert df_curated_class["non_linear_label"].to_list() == [1.0, 1.0, 0.0, 1.0, "None", 1.0, 1.0]
+    assert df_curated_class["miti_linear_label"].to_list() == [1.0, 1.0, 0.0, 1.0, "None", 0.0, 0.0]
+    assert df_curated_class["miti_non_linear_label"].to_list() == [1.0, 1.0, 0.0, 1.0, "None", 1.0, 0.0]
 
 
-def test_remove_selected_biowin(df_improved_class, df_improved_reg):
-    df_improved_class = add_biowin_label(df=df_improved_class, mode="class")
+def test_remove_selected_biowin(df_curated_class, df_curated_reg):
+    df_curated_class = add_biowin_label(df=df_curated_class, mode="class")
     df_class, df_false_class = remove_selected_biowin(
-        df=df_improved_class,
-        mode="class",
-        match_both=False,
-        remove_doc=False,
-        only_reliability_1=False,
-        only_ready=False,
-        only_28=False,
-        biowin56=False,
-    )
-    assert (len(df_class) + len(df_false_class)) == len(df_improved_class)
-    assert df_class.cas.to_list() == ["100-09-4", "100-14-1", "100-37-8"]
-    assert df_false_class.cas.to_list() == ["100-10-7", "100-26-5", "100-40-3", "100-41-4"]
-
-    df_class, df_false_class = remove_selected_biowin(
-        df=df_improved_class,
-        mode="class",
-        match_both=True,
-        remove_doc=False,
-        only_reliability_1=False,
-        only_ready=False,
-        only_28=False,
-        biowin56=False,
-    )
-    assert len(df_false_class[df_false_class["linear_label"] == "None"]) == 0
-    assert len(df_false_class[df_false_class["non_linear_label"] == "None"]) == 0
-    assert (len(df_class) + len(df_false_class)) == len(df_improved_class)
-    assert df_class.cas.to_list() == ["100-09-4", "100-14-1", "100-37-8"]
-    assert df_false_class.cas.to_list() == ["100-10-7", "100-26-5", "100-40-3", "100-41-4"]
-
-    df_class, df_false_class = remove_selected_biowin(
-        df=df_improved_class,
-        mode="class",
-        match_both=True,
-        remove_doc=False,
-        only_reliability_1=False,
-        only_ready=False,
-        only_28=False,
-        biowin56=True,
+        df=df_curated_class,
     )
     assert len(df_false_class[df_false_class["miti_linear_label"] == "None"]) == 0
     assert len(df_false_class[df_false_class["miti_non_linear_label"] == "None"]) == 0
-    assert (len(df_class) + len(df_false_class)) == len(df_improved_class)
+    assert (len(df_class) + len(df_false_class)) == len(df_curated_class)
     assert df_class.cas.to_list() == ["100-09-4", "100-14-1", "100-37-8", "100-41-4"]
     assert df_false_class.cas.to_list() == ["100-10-7", "100-26-5", "100-40-3"]
 
 
-def test_replace_smiles_with_env_relevant_smiles(class_improved):
-    df_env, df_removed = replace_smiles_with_smiles_with_chemical_speciation(df_without_env_smiles=class_improved)
+def test_replace_smiles_with_env_relevant_smiles(class_curated):
+    df_env, df_removed = replace_smiles_with_smiles_with_chemical_speciation(df_without_env_smiles=class_curated)
     assert df_env.smiles.to_list() == [
         "COC1=CC=C(C=C1)C([O-])=O",
         "CN(C)C1=CC=C(C=O)C=C1",
@@ -798,38 +752,85 @@ def test_drop_rows_without_matching_cas(df_lunghini_added_cas):
 
 def test_get_external_dataset_lunghini(class_df):
     df_external_additional = get_external_dataset_lunghini(
-        run_from_start=False, class_df=class_df
+        run_from_start=False, class_df=class_df, include_speciation_lunghini=True
     )
     assert len(class_df[class_df["cas"].isin(df_external_additional["cas"])]) == 0
     assert list(df_external_additional.columns) == [
         "cas",
         "smiles",
         "y_true",
+        'inchi_from_smiles',
     ]
+
+
+def test_assign_group_label_and_drop_replicates():
+    curated_scs = pd.read_csv("datasets/data_processing/reg_curated_scs_no_metal.csv", index_col=0)[:100]
+
+    df_included = reg_df_remove_studies_not_to_consider(curated_scs)
+    df_labelled = label_data_based_on_percentage(df_included)
+    columns = ["cas", "smiles", "principle", "biodegradation_percent", "y_true", "inchi_from_smiles"]
+    df_class = pd.DataFrame(data=df_labelled.copy(), columns=columns)
+
+    df_multiples, df_singles, df_removed_due_to_variance = assign_group_label_and_drop_replicates(
+        df=df_class, by_column="inchi_from_smiles"
+    )
+
+    assert len(df_multiples) + len(df_singles) + len(df_removed_due_to_variance) == df_included["inchi_from_smiles"].nunique()
+    
+    for inchi in df_singles["inchi_from_smiles"]:
+        df_current = df_included[df_included["inchi_from_smiles"] == inchi]
+        assert len(df_current) == 1
+        assert df_current["inchi_from_smiles"].nunique() == 1
+
+    for inchi in df_multiples["inchi_from_smiles"]:
+        df_current = df_included[df_included["inchi_from_smiles"] == inchi]
+        assert len(df_current) > 1
+        assert df_current["inchi_from_smiles"].nunique() == 1
+
+    for inchi in df_removed_due_to_variance["inchi_from_smiles"]:
+        df_current = df_included[df_included["inchi_from_smiles"] == inchi]
+        assert len(df_current) > 1
+        assert df_current["inchi_from_smiles"].nunique() != 1
+
+
+def test_reg_df_remove_studies_not_to_consider(df_curated_reg):
+    df_included = reg_df_remove_studies_not_to_consider(df_curated_reg)
+    assert len(df_curated_reg[df_curated_reg['time_day']==28.0]) == len(df_included)
+    assert len(df_included[df_included['endpoint'] == "inherent"]) == 0
 
 
 def test_create_classification_data_based_on_regression_data(regression_paper):
-    df_class = create_classification_data_based_on_regression_data(
+    df_class, df_removed_due_to_variance = create_classification_data_based_on_regression_data(
         reg_df=regression_paper,
         with_lunghini=False,
-        env_smiles_lunghini=False,
-        env_smiles=True,
+        include_speciation_lunghini=False,
+        include_speciation=False,
         prnt=False,
     )
-    assert df_class.cas.to_list() == ["85-00-7", "24245-27-0"]
-    assert df_class.smiles.to_list() == ["C1C[N+]2=C(C=CC=C2)C2=[N+]1C=CC=C2", "[NH2+]=C(NC1=CC=CC=C1)NC1=CC=CC=C1"]
-    assert df_class.inchi_from_smiles.to_list() == [
-        "InChI=1S/C12H12N2/c1-3-7-13-9-10-14-8-4-2-6-12(14)11(13)5-1/h1-8H,9-10H2/q+2",
-        "InChI=1S/C13H13N3/c14-13(15-11-7-3-1-4-8-11)16-12-9-5-2-6-10-12/h1-10H,(H3,14,15,16)/p+1",
+
+    assert df_class.cas.to_list() == ["85-00-7", "12040-58-3", "24245-27-0"]
+    assert df_class.smiles.to_list() == [
+        "[Br-].[Br-].c1cc[n+]2c(c1)-c1cccc[n+]1CC2",
+        "[Ca+2].[Ca+2].[Ca+2].[O-]B([O-])[O-].[O-]B([O-])[O-]",
+        "[Cl-].[NH2+]=C(Nc1ccccc1)Nc1ccccc1",
     ]
-    assert df_class.y_true.to_list() == [0, 1]
+    assert df_class.inchi_from_smiles.to_list() == [
+        "InChI=1S/C12H12N2.2BrH/c1-3-7-13-9-10-14-8-4-2-6-12(14)11(13)5-1;;/h1-8H,9-10H2;2*1H/q+2;;/p-2",
+        "InChI=1S/2BO3.3Ca/c2*2-1(3)4;;;/q2*-3;3*+2",
+        "InChI=1S/C13H13N3.ClH/c14-13(15-11-7-3-1-4-8-11)16-12-9-5-2-6-10-12;/h1-10H,(H3,14,15,16);1H",
+    ]
+    assert df_class.y_true.to_list() == [0, 0, 1]
     assert df_class.cas.nunique() == df_class.inchi_from_smiles.nunique()
     assert df_class.cas.nunique() == df_class.smiles.nunique()
     assert df_class.columns.to_list() == ["cas", "smiles", "y_true", "inchi_from_smiles"]
 
-    cols = ["cas", "smiles", "y_true"] + get_speciation_col_names() + ["inchi_from_smiles"]
-    df_class = create_classification_data_based_on_regression_data(
-        reg_df=regression_paper, with_lunghini=True, env_smiles_lunghini=True, env_smiles=True, prnt=False
+    cols = ["cas", "smiles", "y_true", "inchi_from_smiles"] + get_speciation_col_names()
+    df_class, _ = create_classification_data_based_on_regression_data(
+        reg_df=regression_paper, 
+        with_lunghini=True, 
+        include_speciation_lunghini=True, 
+        include_speciation=True, 
+        prnt=False
     )
     assert df_class.columns.to_list() == cols
 
@@ -845,8 +846,20 @@ def test_create_input_regression(regression_paper):
     assert len(x[0]) == 190
 
 
-def test_convert_to_maccs_fingerprints(regression_paper):
-    df = convert_to_maccs_fingerprints(regression_paper)
+def test_convert_to_maccs_fingerprints(df_curated_class):
+    df = convert_to_maccs_fingerprints(df_curated_class)
+    for fp in df["fingerprint"]:
+        assert str(type(fp)) == "<class 'rdkit.DataStructs.cDataStructs.ExplicitBitVect'>"
+
+
+def test_convert_to_rdk_fingerprints(df_curated_class):
+    df = convert_to_rdk_fingerprints(df_curated_class)
+    for fp in df["fingerprint"]:
+        assert str(type(fp)) == "<class 'rdkit.DataStructs.cDataStructs.ExplicitBitVect'>"
+
+
+def test_convert_to_morgan_fingerprints(df_curated_class):
+    df = convert_to_morgan_fingerprints(df_curated_class)
     for fp in df["fingerprint"]:
         assert str(type(fp)) == "<class 'rdkit.DataStructs.cDataStructs.ExplicitBitVect'>"
 
@@ -865,6 +878,20 @@ def test_encode_categorical_data(regression_paper):
     df.apply(check_encoding, axis=1)
 
 
+def test_bit_vec_to_lst_of_lst(df_curated_class): 
+    df = convert_to_maccs_fingerprints(df_curated_class)
+    x_class = bit_vec_to_lst_of_lst(df, False)
+    assert len(x_class[0]) == 167
+
+    df = convert_to_rdk_fingerprints(df_curated_class)
+    x_class = bit_vec_to_lst_of_lst(df, False)
+    assert len(x_class[0]) == 2048
+
+    df = convert_to_morgan_fingerprints(df_curated_class)
+    x_class = bit_vec_to_lst_of_lst(df, False)
+    assert len(x_class[0]) == 1024
+
+
 def test_create_input_classification(class_df):
     x = create_input_classification(df_class=class_df, include_speciation=False)
     assert (list(np.unique(x[0]))) == [0, 1]
@@ -875,7 +902,6 @@ def test_create_input_classification(class_df):
     _, _, df_class = load_class_data_paper()
     x = create_input_classification(df_class=df_class[:5], include_speciation=True)
     assert len(x[0]) == 185
-
 
 def test_convert_regression_df_to_input(regression_paper):
     df = convert_regression_df_to_input(df=regression_paper)
@@ -892,6 +918,7 @@ def test_load_gluege_data():
             "cas",
             "smiles",
             "smiles_ph",
+            "inchi_from_smiles",
         ]
     )
     assert len(df[df.smiles.str.contains("nan", regex=False)]) == 0
@@ -910,7 +937,7 @@ def test_check_number_of_components(df_b):
 
 def test_openbabel_convert_smiles_to_inchi_with_nans():
     df = pd.read_csv(
-        "dataframes/df_multiple_components_smiles_not_found_ccc_cirpy.csv",
+        "datasets/data_processing/df_multiple_components_smiles_not_found_ccc_cirpy_no_metals.csv",
         index_col=0,
     )
     df_after = openbabel_convert_smiles_to_inchi_with_nans(col_names_smiles_to_inchi=["smiles_from_cas_cirpy"], df=df)
@@ -924,13 +951,13 @@ def test_get_inchi_main_layer(df_b):
     df = get_inchi_main_layer(df=df_pubchem, inchi_col="inchi_pubchem", layers=4)
     assert list(df["cas"]) == ["132-16-1", "7775-09-9", "94891-43-7", "8029-68-3"]
     assert list(df["inchi_pubchem"]) == [
-        "InChI=1S/C32H16N8.Fe/c1-2-10-18-17(9-1)25-33-26(18)38-28-21-13-5-6-14-22(21)30(35-28)40-32-24-16-8-7-15-23(24)31(36-32)39-29-20-12-4-3-11-19(20)27(34-29)37-25;/h1-16H;/q-2;+2",
+        "",
         "InChI=1S/ClHO3.Na/c2-1(3)4;/h(H,2,3,4);/q;+1/p-1",
         "",
         "InChI=1S/CH4N2O2/c2-1(4)3-5/h5H,(H3,2,3,4)",
     ]
     assert list(df["inchi_pubchem_main_layer"]) == [
-        "InChI=1S/C32H16N8.Fe/c1-2-10-18-17(9-1)25-33-26(18)38-28-21-13-5-6-14-22(21)30(35-28)40-32-24-16-8-7-15-23(24)31(36-32)39-29-20-12-4-3-11-19(20)27(34-29)37-25;/h1-16H;",
+        "",
         "InChI=1S/ClHO3.Na/c2-1(3)4;/h(H,2,3,4);",
         "",
         "InChI=1S/CH4N2O2/c2-1(4)3-5/h5H,(H3,2,3,4)",
@@ -962,7 +989,7 @@ def test_get_smiles_inchi_cirpy(df_b):
 
 
 def test_further_processing_of_echa_data():
-    df_echa = pd.read_csv("dataframes/biodegradation_echa.csv", index_col=0)
+    df_echa = pd.read_csv("datasets/iuclid_echa.csv", index_col=0)
     df_echa = further_processing_of_echa_data(df=df_echa)
     assert len(df_echa[df_echa["guideline"] == ""]) == 0
     assert len(df_echa[df_echa["principle"] == ""]) == 0
@@ -1039,3 +1066,5 @@ def test_get_df_with_unique_cas(regression_paper):
     df_unique_cas = get_df_with_unique_cas(regression_paper)
     assert (regression_paper["cas"].nunique()) == len(df_unique_cas)
     assert (list(df_unique_cas.columns)) == ["name", "cas", "smiles_paper"]
+
+

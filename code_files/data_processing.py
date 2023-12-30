@@ -85,8 +85,8 @@ def replace_smiles_with_smiles_gluege(df: pd.DataFrame, df_checked: pd.DataFrame
         else:
             smiles = str(match["smiles"].values[0])
             inchi_checked = str(match["inchi_from_smiles"].values[0])
-        if inchi_checked and (inchi_huang != inchi_checked):
-            smiles_huang_gluege_dont_match.append(cas)
+            if inchi_huang != inchi_checked:
+                smiles_huang_gluege_dont_match.append(cas)
         return pd.Series([smiles])
 
     df[["smiles"]] = df.apply(get_smiles_ec_num, axis=1)

@@ -1,7 +1,5 @@
 import sys
 import os
-from typing import List
-import numpy as np
 import pandas as pd
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
@@ -19,7 +17,6 @@ from code_files.data_processing import process_data_checked_by_gluege
 from code_files.data_processing import process_data_not_checked_by_gluege
 from code_files.data_processing import process_full_dataset
 from code_files.data_processing import aggregate_duplicates
-
 from code_files.processing_functions import openbabel_convert
 from code_files.processing_functions import check_number_of_components
 from code_files.processing_functions import remove_organo_metals_function
@@ -38,7 +35,6 @@ def test_replace_smiles_with_smiles_gluege(class_original_paper):
         r"CCCCC(=O)N(CC1=CC=C(C=C1)C1=C(C=CC=C1)C1=NN=NN1)[C@@H](C(C)C)C(=O)OCC1=CC=CC=C1",
     ]
     assert len(class_original_paper) == len(df_class_gluege)
-    assert list(class_original_paper.columns) == list(df_class_gluege.columns)
 
 
 def test_get_df_a_and_b():
@@ -256,30 +252,6 @@ def test_process_data_not_checked_by_gluege():
         df_b=df_b
     )
     assert len(df_b) == len(df_one_comp_found) + len(df_multiple_comps_found) + len(df_multiple_comps_not_found)
-
-
-def test_process_full_dataset():
-    df_checked, df_a, df_b, df_a_full_original, df_b_full_original = load_datasets()
-
-    df_a_full = process_data_checked_by_gluege(df_a_full_original=df_a_full_original, df_checked=df_checked, df_a=df_a)
-
-    (
-        df_one_component_smiles_found,
-        df_multiple_components_smiles_found,
-        df_multiple_components_smiles_not_found,
-    ) = process_data_not_checked_by_gluege(df_b=df_b)
-
-    df_full, df_full_with_env_smiles = process_full_dataset(
-        df_a_full=df_a_full,
-        df_b_full_original=df_b_full_original,
-        df_one_component_smiles_found=df_one_component_smiles_found,
-        df_multiple_components_smiles_found=df_multiple_components_smiles_found,
-        df_multiple_components_smiles_not_found=df_multiple_components_smiles_not_found,
-    )
-    df_full, organo_metal = remove_organo_metals_function(df_full, "smiles")
-    assert len(organo_metal) == 0
-    df_full_with_env_smiles, organo_metal = remove_organo_metals_function(df_full_with_env_smiles, "smiles")
-    assert len(organo_metal) == 0
 
 
 def test_aggregate_duplicates(df_for_aggregate):

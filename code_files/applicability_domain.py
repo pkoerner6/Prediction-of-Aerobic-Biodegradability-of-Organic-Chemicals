@@ -1,4 +1,5 @@
 import argparse
+import numpy as np
 import pandas as pd
 import structlog
 import sys
@@ -8,6 +9,8 @@ from collections import defaultdict
 from sklearn.model_selection import StratifiedKFold
 from xgboost import XGBClassifier
 from pyADA import ApplicabilityDomain
+from rdkit.Chem import AllChem
+from rdkit.Chem.rdMolDescriptors import GetMACCSKeysFingerprint
 
 log = structlog.get_logger()
 from typing import List, Dict, Tuple
@@ -15,8 +18,6 @@ from typing import List, Dict, Tuple
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from code_files.processing_functions import load_class_data_paper
-from code_files.processing_functions import load_regression_df
-from code_files.processing_functions import create_fingerprint_df
 from code_files.ml_functions import split_regression_df_with_grouping
 
 
@@ -45,6 +46,14 @@ def get_dsstox(new=False) -> pd.DataFrame:
         df_dsstox.to_csv("datasets/external_data/DSStox.csv")
     df_dsstox = pd.read_csv("datasets/external_data/DSStox.csv", index_col=0)
     return df_dsstox
+
+
+def create_fingerprint_df(df: pd.DataFrame) -> pd.DataFrame:
+    mols = [AllChem.MolFromSmiles(smiles) for smiles in df["smiles"]]
+    fps = [np.array(GetMACCSKeysFingerprint(mol)) for mol in mols]
+    df_fp = pd.DataFrame(data=fps)
+    return df_fp
+
 
 
 def calculate_tanimoto_similarity_class(df: pd.DataFrame, model_with_best_params, nsplits=5, random_state=42):
