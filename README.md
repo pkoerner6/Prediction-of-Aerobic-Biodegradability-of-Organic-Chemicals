@@ -1,5 +1,5 @@
-# Data Quality Matters: Enhancing Machine Learning Models for Predicting Aerobic Biodegradability
-This is the code base for the paper "..." written by Paulina Körner, Dr. Juliane Glüge, Dr. Stefan Glüge and Prof. Dr. Martin Scheringer. 
+# Enhancing Machine Learning Predicting of Aerobic Biodegradability of Organic Chemicals Through Data Curation and Label Noise Handling
+This is the code base for the paper "Enhancing Machine Learning Predicting of Aerobic Biodegradability of Organic Chemicals Through Data Curation and Label Noise Handling" written by Paulina Körner, Dr. Juliane Glüge, Dr. Stefan Glüge and Prof. Dr. Martin Scheringer. 
 
 ## Abstract
 ...
