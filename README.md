@@ -9,19 +9,19 @@ To run the code, Python3 is required.
 Three virtual environments are needed to run all scripts. 
 The environment used to run most of the files can be installed like this:
 ```
-python3 -m main_venv
+python3 -m venv main_venv
 source main_venv/bin/activate
 pip install -r requirements.txt
 ```
 To create the second environment, which is required to run the downloaded models from Hunag and Zhang [2022], run the following code:
 ```
-python3 -m Huang_venv
+python3 -m venv Huang_venv
 source Huang_venv/bin/activate
 pip install -r requirements_huang_zhang_replication.txt
 ```
 The third environment is only required if one wants to use MolGpKa to add pKa and $\alpha$ values to a data frame:
 ```
-python3 -m molgpka_venv
+python3 -m venv molgpka_venv
 source molgpka_venv/bin/activate
 pip install -r requirements_molgpka.txt
 ```
