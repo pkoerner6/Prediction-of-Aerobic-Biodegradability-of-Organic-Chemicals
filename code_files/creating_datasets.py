@@ -46,7 +46,7 @@ def create_class_datasets(with_lunghini: bool, include_speciation: bool) -> None
     curated_scs, curated_scs_removed = create_classification_data_based_on_regression_data(
         df_reg_curated_scs.copy(),
         with_lunghini=with_lunghini,
-        env_smiles_lunghini=True,
+        include_speciation_lunghini=True,
         include_speciation=False,
         prnt=args.prnt,
     )
@@ -59,7 +59,7 @@ def create_class_datasets(with_lunghini: bool, include_speciation: bool) -> None
     curated_scs_biowin, curated_scs_biowin_problematic = create_classification_biowin(
         reg_df=df_reg_curated_scs.copy(),
         with_lunghini=with_lunghini,
-        env_smiles_lunghini=True,
+        include_speciation_lunghini=True,
         prnt=args.prnt,
     )
     curated_scs_biowin.reset_index(inplace=True, drop=True)
@@ -87,7 +87,7 @@ def create_curated_final() -> None:
 
     model_class = train_XGBClassifier_on_all_data(df=df_class, random_seed=args.random_seed, include_speciation=False)
 
-    x_removed = create_input_classification(df_problematic, include_speciation=False)
+    x_removed, _ = create_input_classification(df_problematic, include_speciation=False, target_col="y_true")
     df_problematic["prediction_class"] = model_class.predict(x_removed)
     df_problematic.to_csv("datasets/curated_data/class_curated_scs_biowin_problematic_predicted.csv")
 

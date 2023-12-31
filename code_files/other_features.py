@@ -1,5 +1,6 @@
 """Needs to be run with venv 'molformer_venv'"""
 
+import numpy as np
 import pandas as pd
 import argparse
 import torch
@@ -15,14 +16,6 @@ import os
 
 from fast_transformers.masking import LengthMask as LM
 from xgboost import XGBClassifier
-
-import numpy as np
-import pandas as pd
-from typing import Dict, List, Tuple
-from tqdm import tqdm
-tqdm.pandas()
-
-from rdkit import Chem
 
 tqdm.pandas()
 

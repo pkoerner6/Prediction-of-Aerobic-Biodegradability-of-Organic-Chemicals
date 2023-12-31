@@ -2,10 +2,7 @@ import sys
 import os
 import numpy as np
 import pandas as pd
-from collections import OrderedDict
-from xgboost import XGBClassifier, XGBRegressor
-from skopt.space import Real, Categorical, Integer
-
+from xgboost import XGBClassifier
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from code_files.processing_functions import get_speciation_col_names
@@ -45,7 +42,7 @@ def test_get_class_results():
 def test_split_classification_df_with_fixed_test_set(class_df_long, class_curated):
     nsplits = 3
     df_test = class_df_long.copy()[:10]
-    cols = ["cas", "smiles"]
+    cols = ["cas", "smiles", "y_true"]
     train_sets1, test_sets1 = split_classification_df_with_fixed_test_set(
         df=class_df_long,
         df_test=df_test,
@@ -79,7 +76,7 @@ def test_split_classification_df_with_fixed_test_set(class_df_long, class_curate
 def test_skf_class_fixed_testset(class_df_long):
     nsplits = 3
     df_test = class_df_long.copy()[:10]
-    cols = ["cas", "smiles"]
+    cols = ["cas", "smiles", "y_true"]
 
     (
         x_train_fold_lst,
@@ -95,12 +92,13 @@ def test_skf_class_fixed_testset(class_df_long):
         random_seed=42,
         include_speciation=False,
         cols=cols,
+        target_col="y_true",
         paper=False,
     )
     lsts = [x_train_fold_lst, y_train_fold_lst, x_test_fold_lst, y_test_fold_lst, df_test_lst, test_set_sizes]
     for lst in lsts:
         assert len(lst) == nsplits
-    assert (cols + ["inchi_from_smiles", "y_true"]) == list(df_test_lst[0].columns)
+    assert (cols + ["inchi_from_smiles"]) == list(df_test_lst[0].columns)
     for i in range(len(y_test_fold_lst)):
         assert df_test_lst[i]["y_true"].to_list() == y_test_fold_lst[i].to_list()
 
@@ -111,6 +109,7 @@ def test_skf_class_fixed_testset(class_df_long):
         random_seed=42,
         include_speciation=False,
         cols=cols,
+        target_col="y_true",
         paper=False,
     )
     for i in range(len(x_test_fold_lst)):
@@ -125,23 +124,25 @@ def test_skf_class_fixed_testset(class_df_long):
         random_seed=42,
         include_speciation=True,
         cols=cols,
+        target_col="y_true",
         paper=False,
     )
-    assert (cols + ["inchi_from_smiles", "y_true"]) == list(df_test_lst3[0].columns)
+    assert (cols + ["inchi_from_smiles"]) == list(df_test_lst3[0].columns)
 
 
 def test_get_balanced_data_adasyn(class_df_long):
     nsplits = 3
-    cols = ["cas", "smiles"]
+    cols = ["cas", "smiles", "y_true"]
     _, _, class_df = load_class_data_paper()
     df_test = class_df_long.copy()[:10]
-    x_train_fold_lst, y_train_fold_lst, _, _, _, _ = skf_class_fixed_testset( # TODO
+    x_train_fold_lst, y_train_fold_lst, _, _, _, _ = skf_class_fixed_testset( 
         df=class_df,
         df_test=df_test,
         nsplits=nsplits,
         random_seed=42,
         include_speciation=False,
         cols=cols,
+        target_col="y_true",
         paper=False,
 
     )
@@ -242,6 +243,7 @@ def test_train_XGBClassifier(class_df_long):
         include_speciation=False,
         df_test=class_df_long,
         dataset_name="classification_paper_full_test",
+        target_col="y_true",
     )
     assert len(accu) == nsplits
     assert len(f1) == nsplits

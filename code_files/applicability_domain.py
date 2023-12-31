@@ -37,14 +37,13 @@ def get_datasets() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     return df_curated_scs, df_curated_biowin, df_curated_final
 
 
-def get_dsstox(new=False) -> pd.DataFrame:
+def get_dsstox(new=True) -> pd.DataFrame:
     if new:
-        df_dsstox_huang = pd.read_excel("external_data/Huang_Zhang_DSStox.xlsx", index_col=0)
+        df_dsstox_huang = pd.read_excel("datasets/external_data/Huang_Zhang_DSStox.xlsx", index_col=0)
         df_dsstox_huang.rename(columns={"Smiles": "smiles", "CASRN": "cas"}, inplace=True)
-
         df_dsstox = df_dsstox_huang[["cas", "smiles"]].copy()
         df_dsstox.to_csv("datasets/external_data/DSStox.csv")
-    df_dsstox = pd.read_csv("datasets/external_data/DSStox.csv", index_col=0)
+    df_dsstox = pd.read_csv("datasets/external_data/DSStox.csv", index_col=0)[:1000] # TODO
     return df_dsstox
 
 
@@ -206,21 +205,18 @@ def calculate_tanimoto_similarity_class_huang():
 def calculate_tanimoto_similarity_curated_scs():
     log.info("\n Define AD of df_curated_scs")
     df_curated_scs, _, _ = get_datasets()
-    # best_params = get_lazy_xgbc_parameters()
     model = XGBClassifier() # TODO
     calculate_tanimoto_similarity_class(df=df_curated_scs, model_with_best_params=model)
 
 def calculate_tanimoto_similarity_curated_biowin():
     log.info("\n Define AD of df_curated_biowin")
     _, df_curated_biowin, df_curated_final = get_datasets()
-    # best_params = get_lazy_xgbc_parameters()
     model = XGBClassifier() # TODO
     calculate_tanimoto_similarity_class(df=df_curated_biowin, model_with_best_params=model)
 
 def calculate_tanimoto_similarity_curated_final():
     log.info("\n Define AD of df_curated_final")
     _, _, df_curated_final = get_datasets()
-    # best_params = get_lazy_xgbc_parameters()
     model = XGBClassifier() # TODO
     calculate_tanimoto_similarity_class(df=df_curated_final, model_with_best_params=model)
 

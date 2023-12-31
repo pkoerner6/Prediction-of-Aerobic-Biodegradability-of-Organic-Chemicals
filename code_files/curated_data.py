@@ -72,6 +72,7 @@ def train_classification_models(
             include_speciation=False,
             df_test=df_test,
             dataset_name=dataset_name,
+            target_col="y_true",
         )
         accuracy[indx] = np.asarray(lst_accu_paper)
         f1[indx] = np.asarray(lst_f1_paper)

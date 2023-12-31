@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import torch
 import os
-from typing import List, Tuple
+from typing import List
 from torch_geometric.nn import GlobalAttention
 from torch_geometric.data import Data
 import torch.nn.functional as F

@@ -26,13 +26,13 @@ import lightgbm as lgbm
 from xgboost import XGBClassifier
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.neural_network import MLPClassifier
 
 np.int = int  # Because of scikit-optimize
 from skopt.space import Real, Categorical, Integer
 from skopt import BayesSearchCV
 from skopt.callbacks import DeadlineStopper, DeltaYStopper
 
-from imblearn.over_sampling import ADASYN
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import (
     make_scorer,
@@ -72,12 +72,6 @@ parser.add_argument(
     type=int,
     default=5,
     help="Select the number of splits for cross validation",
-)
-parser.add_argument(
-    "--train_new",
-    default=False,
-    action=argparse.BooleanOptionalAction,
-    help="Whether run the hyperparamter tuning again and train the models",
 )
 parser.add_argument(
     "--njobs",
@@ -233,32 +227,6 @@ def run_lazy_classifier(df: pd.DataFrame, df_test: pd.DataFrame) -> None:
 
     models, _ = clf.fit(x_balanced, x_test, y_balanced, y_test)
     log.info(models)
-
-
-# def plot_results_classification(all_data: List[np.ndarray], title: str) -> None:
-#     all_data = [array * 100 for array in all_data]
-
-#     plt.figure(figsize=(10, 5))
-#     labels = [
-#         "XGBoost",
-#         "LGBM",
-#         "ExtraTrees",
-#         "RandomForest",
-#         "Bagging",
-#     ]
-#     bplot = plt.boxplot(all_data, vert=True, patch_artist=True, labels=labels, meanline=True, showmeans=True)
-#     colors = ["pink", "lightblue", "mediumpurple", "lightgreen", "orange"]
-#     for patch, color in zip(bplot["boxes"], colors):
-#         patch.set_facecolor(color)
-
-#     plt.xticks(fontsize=16)
-#     plt.yticks(fontsize=16)
-#     plt.xlabel("Classifiers", fontsize=18)
-#     plt.ylabel("Accuracy (%)", fontsize=18)
-#     plt.tight_layout()
-#     plt.grid(axis="y")
-#     plt.savefig(f"figures/lazy_predict_results_accuracy_classification.png")
-#     plt.close()
 
 
 
@@ -436,6 +404,94 @@ def tune_and_train_RandomForestClassifier(df: pd.DataFrame, nsplits: int, df_tes
     return accu, f1, sensitivity, specificity
 
 
+def tune_and_train_MLPClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+    model = MLPClassifier
+    search_spaces = {
+        "random_state": Categorical([args.random_seed]),
+        "activation": Categorical(["identity", "logistic", "tanh", "relu"]),
+        "solver": Categorical(["lbfgs", "sgd", "adam"]),
+        "alpha": Real(0.00001, 0.01, "uniform"),
+        "learning_rate_init": Real(0.0001, 0.01, "uniform"),
+        "max_iter": Integer(150, 250),
+        "early_stopping": Categorical([True]),
+
+    }
+    accu, f1, sensitivity, specificity = tune_and_train_classifiers(
+        df=df,
+        nsplits=nsplits,
+        df_test=df_test,
+        n_jobs=1,
+        search_spaces=search_spaces,
+        model=model,
+    )
+    return accu, f1, sensitivity, specificity
+
+
+# def tune_and_train_LGBMClassifier( # TODO
+#     df: pd.DataFrame,
+#     random_seed: int,
+#     nsplits: int,
+#     include_speciation: bool,
+#     df_test: pd.DataFrame,
+#     dataset_name: str,
+#     n_jobs: int,
+# ) -> Tuple[List[float], List[float], List[float], List[float]]:
+#     model = lgbm.LGBMClassifier
+#     search_spaces = {
+#         "boosting_type": Categorical(["gbdt"]),
+#         "learning_rate": Real(0.001, 0.1, "uniform"),
+#         "max_depth": Categorical([-1]),
+#         "n_estimators": Integer(100, 1600),
+#         "num_leaves": Integer(100, 1000),
+#         "objective": Categorical(["binary"]),
+#     }
+
+#     accu, f1, sensitivity, specificity = tune_and_train_classifiers(
+#         df=df,
+#         random_seed=random_seed,
+#         nsplits=nsplits,
+#         search_spaces=search_spaces,
+#         include_speciation=include_speciation,
+#         df_test=df_test,
+#         dataset_name=dataset_name,
+#         n_jobs=n_jobs,
+#         model=model,
+#     )
+#     return accu, f1, sensitivity, specificity
+
+# def tune_and_train_BaggingClassifier( # TODO
+#     df: pd.DataFrame,
+#     random_seed: int,
+#     nsplits: int,
+#     include_speciation: bool,
+#     df_test: pd.DataFrame,
+#     dataset_name: str,
+#     n_jobs: int,
+# ) -> Tuple[List[float], List[float], List[float], List[float]]:
+#     model = BaggingClassifier
+#     search_spaces = {
+#         "max_features": Integer(1, 164),
+#         "max_samples": Integer(5, 3000),
+#         "n_estimators": Integer(200, 3000),
+#         "n_jobs": Categorical([-1]),
+#         "random_state": Categorical([random_seed]),
+#     }
+
+#     accu, f1, sensitivity, specificity = tune_and_train_classifiers(
+#         df=df,
+#         random_seed=random_seed,
+#         nsplits=nsplits,
+#         search_spaces=search_spaces,
+#         include_speciation=include_speciation,
+#         df_test=df_test,
+#         dataset_name=dataset_name,
+#         n_jobs=n_jobs,
+#         model=model,
+#     )
+#     return accu, f1, sensitivity, specificity
+
+
+
 def run_and_plot_classifiers(df_class: pd.DataFrame) -> None:
 
     train_data, test_data = train_test_split(df_class, test_size=0.2, random_state=args.random_seed)
@@ -453,18 +509,17 @@ def run_and_plot_classifiers(df_class: pd.DataFrame) -> None:
     sensitivity_all = []
     specificity_all = []
 
-    if args.train_new:
-        for classifier in classifiers:
-            log.info(f" \n Currently running the classifier {classifier}")
-            accu, f1, sensitivity, specificity = classifiers[classifier](
-                df=train_data,
-                nsplits=args.nsplits,
-                df_test=test_data,
-            )
-            accuracy_all.append(np.asarray(accu))
-            f1_all.append(np.asarray(f1))
-            sensitivity_all.append(np.asarray(sensitivity))
-            specificity_all.append(np.asarray(specificity))
+    for classifier in classifiers:
+        log.info(f" \n Currently running the classifier {classifier}")
+        accu, f1, sensitivity, specificity = classifiers[classifier](
+            df=train_data,
+            nsplits=args.nsplits,
+            df_test=test_data,
+        )
+        accuracy_all.append(np.asarray(accu))
+        f1_all.append(np.asarray(f1))
+        sensitivity_all.append(np.asarray(sensitivity))
+        specificity_all.append(np.asarray(specificity))
 
 
 if __name__ == "__main__":
