@@ -41,7 +41,7 @@ def create_class_datasets(with_lunghini: bool, include_speciation: bool) -> None
     df_reg_curated_scs = load_regression_df_curated_scs_no_metal()
 
     log.info("\n Creating curated_scs")
-    curated_scs, curated_scs_removed = create_classification_data_based_on_regression_data(
+    curated_scs, _ = create_classification_data_based_on_regression_data(
         df_reg_curated_scs.copy(),
         with_lunghini=with_lunghini,
         include_speciation_lunghini=True,
@@ -67,7 +67,6 @@ def create_class_datasets(with_lunghini: bool, include_speciation: bool) -> None
     log.info("Entries in curated_biowin labeled as NRB", entries=len(curated_scs_biowin[curated_scs_biowin["y_true"]==0]))
 
     curated_scs.to_csv("datasets/curated_data/class_curated_scs.csv")
-    curated_scs_removed.to_csv("datasets/curated_data/class_curated_scs_removed.csv")
 
     curated_scs_biowin.to_csv("datasets/curated_data/class_curated_biowin.csv")
     curated_scs_biowin_problematic.to_csv("datasets/curated_data/class_curated_biowin_problematic.csv")
@@ -111,8 +110,6 @@ def create_curated_final() -> None:
 
     df_curated_final.reset_index(inplace=True, drop=True) 
     df_curated_final.to_csv(f"datasets/curated_data/class_curated_final.csv")
-    class_biowin_removed = pd.read_csv("datasets/curated_data/class_curated_scs_removed.csv", index_col=0)
-    df_no_match = pd.concat([class_biowin_removed, df_no_match], axis=0)
     df_no_match.reset_index(inplace=True, drop=True) 
     df_no_match.to_csv(f"datasets/curated_data/class_curated_final_removed.csv")
 

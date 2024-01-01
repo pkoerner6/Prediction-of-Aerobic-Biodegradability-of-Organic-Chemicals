@@ -106,7 +106,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 
-def create_input_classification_other_features(df: pd.DataFrame, feature_type="MACCS") -> np.ndarray:
+def create_input_classification_other_features(df: pd.DataFrame, feature_type: str) -> np.ndarray:
     """Function to create fingerprints and put fps into one array that can than be used as one feature for model training."""
     if feature_type=="MACCS":
         df = convert_to_maccs_fingerprints(df)
@@ -670,7 +670,7 @@ def run_classifiers_MACCS(datasets: Dict[str, pd.DataFrame], df_test: str) -> No
 
 def run_classifiers_RDK(datasets: Dict[str, pd.DataFrame], df_test: str) -> None:
     train_data = datasets[args.train_set]
-    test_data = datasets[df_test]
+    test_data = datasets[df_test].sample(frac=0.2, random_state=args.random_seed)
 
     if args.test_set == "df_curated_scs":
         classifiers = {
@@ -699,7 +699,7 @@ def run_classifiers_RDK(datasets: Dict[str, pd.DataFrame], df_test: str) -> None
 
 def run_classifiers_Morgan(datasets: Dict[str, pd.DataFrame], df_test: str) -> None:
     train_data = datasets[args.train_set]
-    test_data = datasets[df_test]
+    test_data = datasets[df_test].sample(frac=0.2, random_state=args.random_seed)
 
     if args.test_set == "df_curated_scs":
         classifiers = {

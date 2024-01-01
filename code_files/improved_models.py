@@ -155,18 +155,14 @@ def create_features_molformer(df: pd.DataFrame, tokenizer, lm) -> pd.DataFrame:
     # Pretrained features
     def canonicalize(s):
         return Chem.MolToSmiles(Chem.MolFromSmiles(s), canonical=True, isomericSmiles=False)
-
     smiles = df.smiles.apply(canonicalize)
-    print(smiles)
-    print(lm)
-    print(tokenizer)
     embeddings = get_embeddings(lm, smiles, tokenizer).numpy()
     df = df.copy()
     df["fingerprint"] = [embedding.tolist() for embedding in embeddings]
     return df
 
 
-def create_input_classification_other_features(df: pd.DataFrame, feature_type="MACCS") -> np.ndarray:
+def create_input_classification_other_features(df: pd.DataFrame, feature_type: str) -> np.ndarray:
     """Function to create fingerprints and put fps into one array that can than be used as one feature for model training."""
     if feature_type=="MACCS":
         df = convert_to_maccs_fingerprints(df)
@@ -247,7 +243,6 @@ def tune_classifiers(
 ):
     df_tune = df[~df["inchi_from_smiles"].isin(df_test["inchi_from_smiles"])]
     df_tune = df_tune[~df_tune["cas"].isin(df_test["cas"])]
-
     x = create_input_classification_other_features(df_tune, feature_type=args.feature_type)
     y = df_tune["y_true"]
     x, y, = get_balanced_data_adasyn(random_seed=args.random_seed, x=x, y=y)
@@ -561,6 +556,7 @@ def tune_and_train_LinearSVC(df: pd.DataFrame, df_test: pd.DataFrame):
         "random_state": Categorical([args.random_seed]),
     }
     log.info("Started tuning LinearSVC")
+    
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
         df_test=df_test,
@@ -734,7 +730,7 @@ def run_classifiers_MACCS(datasets: Dict[str, pd.DataFrame], df_test: str) -> No
 
 def run_classifiers_RDK(datasets: Dict[str, pd.DataFrame], df_test: str) -> None:
     train_data = datasets[args.train_set]
-    test_data = datasets[df_test]
+    test_data = datasets[df_test].sample(frac=0.2, random_state=args.random_seed)
 
     if args.test_set == "df_curated_scs":
         classifiers = {
@@ -763,7 +759,7 @@ def run_classifiers_RDK(datasets: Dict[str, pd.DataFrame], df_test: str) -> None
 
 def run_classifiers_Morgan(datasets: Dict[str, pd.DataFrame], df_test: str) -> None:
     train_data = datasets[args.train_set]
-    test_data = datasets[df_test]
+    test_data = datasets[df_test].sample(frac=0.2, random_state=args.random_seed)
 
     if args.test_set == "df_curated_scs":
         classifiers = {
@@ -792,7 +788,7 @@ def run_classifiers_Morgan(datasets: Dict[str, pd.DataFrame], df_test: str) -> N
 
 def run_classifiers_Molformer(datasets: Dict[str, pd.DataFrame], df_test: str) -> None:
     train_data = datasets[args.train_set]
-    test_data = datasets[df_test]
+    test_data = datasets[df_test].sample(frac=0.2, random_state=args.random_seed)
 
     if args.test_set == "df_curated_scs":
         classifiers = {
