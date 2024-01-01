@@ -474,9 +474,9 @@ def tune_and_train_MLPClassifier(df: pd.DataFrame, df_test: pd.DataFrame):
         "random_state": Categorical([args.random_seed]),
         "activation": Categorical(["identity", "logistic", "tanh", "relu"]),
         "solver": Categorical(["lbfgs", "sgd", "adam"]),
-        "alpha": Real(0.000001, 0.01, "uniform"),
-        "learning_rate_init": Real(0.0001, 0.01, "uniform"),
-        "max_iter": Integer(240, 400),
+        "alpha": Real(0.000001, 0.1, "uniform"),
+        "learning_rate_init": Real(0.0001, 0.1, "uniform"),
+        "max_iter": Integer(200, 600),
         "early_stopping": Categorical([True]),
         "hidden_layer_sizes": Integer(120, 250),
     }
@@ -495,9 +495,9 @@ def tune_and_train_HistGradientBoostingClassifier(df: pd.DataFrame, df_test: pd.
     model = HistGradientBoostingClassifier
     search_spaces = {
         "learning_rate": Real(0.01, 0.4, "uniform"),
-        "max_iter": Integer(80, 200),
-        "max_leaf_nodes": Integer(25, 50),
-        "min_samples_leaf": Integer(10, 25),
+        "max_iter": Integer(50, 200),
+        "max_leaf_nodes": Integer(15, 40),
+        "min_samples_leaf": Integer(2, 25),
         "random_state": Categorical([args.random_seed]),
     }
     log.info("Started tuning HistGradientBoostingClassifier")
@@ -549,7 +549,6 @@ def tune_and_train_GaussianProcessClassifier(df: pd.DataFrame, df_test: pd.DataF
 def tune_and_train_LinearSVC(df: pd.DataFrame, df_test: pd.DataFrame):
     model = LinearSVC
     search_spaces = {
-        "penalty": Categorical(["l1", "l2"]),
         "loss": Categorical(["hinge", "squared_hinge"]),
         "multi_class": Categorical(["ovr", "crammer_singer"]),
         "max_iter": Integer(800, 1200),
