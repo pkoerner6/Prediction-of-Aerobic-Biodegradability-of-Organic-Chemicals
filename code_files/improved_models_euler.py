@@ -567,7 +567,7 @@ def tune_and_train_LogisticRegression(df: pd.DataFrame, df_test: pd.DataFrame):
 def tune_and_train_SVC(df: pd.DataFrame, df_test: pd.DataFrame):
     model = SVC
     search_spaces = {
-        "kernel": Categorical(["linear", "poly", "rbf", "sigmoid", "precomputed"]),
+        "kernel": Categorical(["linear", "poly", "rbf", "sigmoid"]),
         "degree": Integer(2, 3),
         "gamma": Categorical(["auto", "scale"]),
         "random_state": Categorical([args.random_seed]),

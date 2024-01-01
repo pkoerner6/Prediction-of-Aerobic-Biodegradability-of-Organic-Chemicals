@@ -31,9 +31,9 @@ def get_datasets() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     df_curated_final = pd.read_csv(
         "datasets/curated_data/class_curated_final.csv", index_col=0
     )
-    df_curated_scs = df_curated_scs[:100] # TODO
-    df_curated_biowin = df_curated_biowin[:100] # TODO
-    df_curated_final = df_curated_final[:100] # TODO
+    df_curated_scs = df_curated_scs
+    df_curated_biowin = df_curated_biowin
+    df_curated_final = df_curated_final
     return df_curated_scs, df_curated_biowin, df_curated_final
 
 
@@ -43,7 +43,7 @@ def get_dsstox(new=True) -> pd.DataFrame:
         df_dsstox_huang.rename(columns={"Smiles": "smiles", "CASRN": "cas"}, inplace=True)
         df_dsstox = df_dsstox_huang[["cas", "smiles"]].copy()
         df_dsstox.to_csv("datasets/external_data/DSStox.csv")
-    df_dsstox = pd.read_csv("datasets/external_data/DSStox.csv", index_col=0)[:1000] # TODO
+    df_dsstox = pd.read_csv("datasets/external_data/DSStox.csv", index_col=0)
     return df_dsstox
 
 
@@ -197,7 +197,7 @@ def check_external_test_in_ad(df_train: pd.DataFrame, df_test: pd.DataFrame):
 def calculate_tanimoto_similarity_class_huang():
     log.info("\n Define AD of classification data Huang and Zhang")
     _, _, df_class_huang = load_class_data_paper()
-    df_class_huang = df_class_huang[:100] # TODO
+    df_class_huang = df_class_huang
     model = XGBClassifier()
     calculate_tanimoto_similarity_class(df=df_class_huang, model_with_best_params=model)
 

@@ -629,7 +629,7 @@ def tune_and_train_LogisticRegression(df: pd.DataFrame, df_test: pd.DataFrame):
 def tune_and_train_SVC(df: pd.DataFrame, df_test: pd.DataFrame):
     model = SVC
     search_spaces = {
-        "kernel": Categorical(["linear", "poly", "rbf", "sigmoid", "precomputed"]),
+        "kernel": Categorical(["linear", "poly", "rbf", "sigmoid"]),
         "degree": Integer(2, 3),
         "gamma": Categorical(["auto", "scale"]),
         "random_state": Categorical([args.random_seed]),
@@ -793,7 +793,7 @@ def run_classifiers_Molformer(datasets: Dict[str, pd.DataFrame]) -> None:
 
     if args.test_set == "df_curated_scs":
         classifiers = {
-            "SVC": tune_and_train_SVC,
+            # "SVC": tune_and_train_SVC,
             "XGBClassifier": tune_and_train_XGBClassifier,
             "MLPClassifier": tune_and_train_MLPClassifier,
             "GaussianProcessClassifier": tune_and_train_GaussianProcessClassifier,
