@@ -42,10 +42,10 @@ def get_class_results(true: np.ndarray, pred: np.ndarray) -> Tuple[float, float,
 
 
 def print_class_results(accuracy: float, sensitivity: float, specificity: float, f1: float) -> float:
-    log.info("Accuracy score", accuracy="{:.1f}".format(accuracy * 100))
+    log.info("Balanced accuracy", accuracy="{:.1f}".format(accuracy * 100))
     log.info("Sensitivity", sensitivity="{:.1f}".format(sensitivity * 100))
     log.info("Specificity", specificity="{:.1f}".format(specificity * 100))
-    log.info("F1", f1="{:.1f}".format(f1 * 100))
+    log.info("F1", f1="{:.2f}".format(f1))
     return accuracy
 
 
@@ -242,18 +242,21 @@ def skf_classification(
         model=model,
     )
 
-    metrics = ["accuracy", "sensitivity", "specificity", "f1"]
+    metrics = ["accuracy", "sensitivity", "specificity"]
     metrics_values = [
         lst_accu,
         lst_sensitivity,
         lst_specificity,
-        lst_f1,
     ]
     for metric, metric_values in zip(metrics, metrics_values):
         log.info(
             f"{metric}: ",
             score="{:.1f}".format(np.mean(metric_values) * 100) + " ± " + "{:.1f}".format(np.std(metric_values) * 100),
         )
+    log.info(
+        f"F1: ",
+        score="{:.2f}".format(np.mean(lst_f1)) + " ± " + "{:.2f}".format(np.std(lst_f1)),
+    )
     return (
         lst_accu,
         lst_sensitivity,
@@ -535,10 +538,10 @@ def train_XGBClassifier(
         target_col=target_col,
         model=XGBClassifier(),  # Default parameters as in paper
     )
-    log.info("Accuracy: ", accuracy=accu)
-    log.info("Sensitivity: ", sensitivity=sensitivity)
-    log.info("Specificity: ", specificity=specificity)
-    log.info("F1: ", f1=f1)
+    log.info("Balanced accuracy", accuracy=accu)
+    log.info("Sensitivity", sensitivity=sensitivity)
+    log.info("Specificity", specificity=specificity)
+    log.info("F1", f1=f1)
     return accu, f1, sensitivity, specificity
 
 

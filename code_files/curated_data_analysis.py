@@ -131,11 +131,11 @@ def analyse_distribution(
                 curated_scs="{:.1f}".format(
                     (dfname_to_groupamount["curated_scs"][i] / dfname_to_groupamount["curated_scs"][i]) * 100
                 ),
-                improved_biowin_both="{:.1f}".format(
+                curated_biowin="{:.1f}".format(
                     (dfname_to_groupamount["curated_biowin"][i] / dfname_to_groupamount["curated_scs"][i])
                     * 100
                 ),
-                improved_biowin_both_readded="{:.1f}".format(
+                curated_final="{:.1f}".format(
                     (
                         dfname_to_groupamount["curated_final"][i]
                         / dfname_to_groupamount["curated_scs"][i]
@@ -220,10 +220,10 @@ def analyse_distribution_of_substances(dfnames_to_dfs: pd.DataFrame) -> None:
             curated_scs="{:.1f}".format(
                 (df_occurences_all["curated_scs"][c] / df_occurences_all["curated_scs"][c]) * 100
             ),
-            improved_biowin_both="{:.1f}".format(
+            curated_biowin="{:.1f}".format(
                 (df_occurences_all["curated_biowin"][c] / df_occurences_all["curated_scs"][c]) * 100
             ),
-            improved_biowin_both_readded="{:.1f}".format(
+            curated_final="{:.1f}".format(
                 (df_occurences_all["curated_final"][c] / df_occurences_all["curated_scs"][c]) * 100
             ),
         )

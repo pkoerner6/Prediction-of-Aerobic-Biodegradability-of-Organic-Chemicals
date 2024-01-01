@@ -589,7 +589,7 @@ def tune_and_train_PassiveAggressiveClassifier(df: pd.DataFrame, df_test: pd.Dat
 def tune_and_train_Perceptron(df: pd.DataFrame, df_test: pd.DataFrame):
     model = Perceptron
     search_spaces = {
-        "penalty": Categorical(["l1", "l2", "elasticnet"]),
+        # "penalty": Categorical(["l1", "l2", "elasticnet"]),
         "alpha": Real(0.00001, 0.001, "uniform"),
         "max_iter": Integer(800, 1200),
         "random_state": Categorical([args.random_seed]),
@@ -609,7 +609,7 @@ def tune_and_train_Perceptron(df: pd.DataFrame, df_test: pd.DataFrame):
 def tune_and_train_LogisticRegression(df: pd.DataFrame, df_test: pd.DataFrame):
     model = LogisticRegression
     search_spaces = {
-        "penalty": Categorical(["l1", "l2", "elasticnet"]),
+        # "penalty": Categorical(["l1", "l2", "elasticnet"]),
         "random_state": Categorical([args.random_seed]),
         "solver": Categorical(["lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"]),
         "max_iter": Integer(80, 120),
