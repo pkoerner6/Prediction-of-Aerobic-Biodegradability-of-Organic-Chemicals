@@ -243,9 +243,10 @@ def tune_classifiers(
 ):
     df_tune = df[~df["inchi_from_smiles"].isin(df_test["inchi_from_smiles"])]
     df_tune = df_tune[~df_tune["cas"].isin(df_test["cas"])]
+
     x = create_input_classification_other_features(df_tune, feature_type=args.feature_type)
     y = df_tune["y_true"]
-    x, y, = get_balanced_data_adasyn(random_seed=args.random_seed, x=x, y=y)
+    x, y = get_balanced_data_adasyn(random_seed=args.random_seed, x=x, y=y)
 
     scoring = make_scorer(accuracy_score, greater_is_better=True)
     skf = StratifiedKFold(n_splits=args.nsplits, shuffle=True, random_state=args.random_seed)
@@ -378,9 +379,10 @@ def tune_and_train_classifiers(
     search_spaces: Dict,
     model,
 ):
+    test_data = df_test.sample(frac=0.2, random_state=args.random_seed)
     best_params = tune_classifiers(
         df=df,
-        df_test=df_test,
+        df_test=test_data,
         search_spaces=search_spaces,
         model=model,
     )
@@ -698,9 +700,9 @@ def tune_and_train_GradientBoostingClassifier(df: pd.DataFrame, df_test: pd.Data
     return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
-def run_classifiers_MACCS(datasets: Dict[str, pd.DataFrame], df_test: str) -> None:
+def run_classifiers_MACCS(datasets: Dict[str, pd.DataFrame]) -> None:
     train_data = datasets[args.train_set]
-    test_data = datasets[df_test].sample(frac=0.2, random_state=args.random_seed)
+    test_data = datasets[args.test_set]
 
     if args.test_set == "df_curated_scs":
         classifiers = {
@@ -727,9 +729,9 @@ def run_classifiers_MACCS(datasets: Dict[str, pd.DataFrame], df_test: str) -> No
         )
 
 
-def run_classifiers_RDK(datasets: Dict[str, pd.DataFrame], df_test: str) -> None:
+def run_classifiers_RDK(datasets: Dict[str, pd.DataFrame]) -> None:
     train_data = datasets[args.train_set]
-    test_data = datasets[df_test].sample(frac=0.2, random_state=args.random_seed)
+    test_data = datasets[args.test_set]
 
     if args.test_set == "df_curated_scs":
         classifiers = {
@@ -756,9 +758,9 @@ def run_classifiers_RDK(datasets: Dict[str, pd.DataFrame], df_test: str) -> None
         )
 
 
-def run_classifiers_Morgan(datasets: Dict[str, pd.DataFrame], df_test: str) -> None:
+def run_classifiers_Morgan(datasets: Dict[str, pd.DataFrame]) -> None:
     train_data = datasets[args.train_set]
-    test_data = datasets[df_test].sample(frac=0.2, random_state=args.random_seed)
+    test_data = datasets[args.test_set]
 
     if args.test_set == "df_curated_scs":
         classifiers = {
@@ -785,9 +787,9 @@ def run_classifiers_Morgan(datasets: Dict[str, pd.DataFrame], df_test: str) -> N
         )
 
 
-def run_classifiers_Molformer(datasets: Dict[str, pd.DataFrame], df_test: str) -> None:
+def run_classifiers_Molformer(datasets: Dict[str, pd.DataFrame]) -> None:
     train_data = datasets[args.train_set]
-    test_data = datasets[df_test].sample(frac=0.2, random_state=args.random_seed)
+    test_data = datasets[args.test_set]
 
     if args.test_set == "df_curated_scs":
         classifiers = {
@@ -822,13 +824,13 @@ if __name__ == "__main__":
         run_lazy_classifier(df=datasets[args.train_set], df_test=datasets[args.test_set])
 
     if args.feature_type == "MACCS":
-        run_classifiers_MACCS(datasets=datasets, df_test=args.test_set)
+        run_classifiers_MACCS(datasets=datasets)
     if args.feature_type == "RDK":
-        run_classifiers_RDK(datasets=datasets, df_test=args.test_set)
+        run_classifiers_RDK(datasets=datasets)
     if args.feature_type == "Morgan":
-        run_classifiers_Morgan(datasets=datasets, df_test=args.test_set)
+        run_classifiers_Morgan(datasets=datasets)
     if args.feature_type == "Molformer":
-        run_classifiers_Molformer(datasets=datasets, df_test=args.test_set)
+        run_classifiers_Molformer(datasets=datasets)
 
 
 
