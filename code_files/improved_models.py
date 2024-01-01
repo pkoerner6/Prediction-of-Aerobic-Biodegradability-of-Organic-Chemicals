@@ -56,7 +56,6 @@ from code_files.processing_functions import convert_to_maccs_fingerprints
 from code_files.processing_functions import convert_to_rdk_fingerprints
 from code_files.ml_functions import get_balanced_data_adasyn
 from code_files.ml_functions import report_perf_hyperparameter_tuning
-from code_files.ml_functions import get_class_results
 from code_files.ml_functions import run_balancing_and_training
 from code_files.ml_functions import split_classification_df_with_fixed_test_set
 from MolFormer.finetune.tokenizer.tokenizer import MolTranBertTokenizer
@@ -239,10 +238,8 @@ def run_lazy_classifier(df: pd.DataFrame, df_test: pd.DataFrame) -> None:
 
 def tune_classifiers(
     df: pd.DataFrame, 
-    nsplits: int, 
     df_test: pd.DataFrame, 
     search_spaces: Dict, 
-    n_jobs: int,
     model,
 ):
     df_tune = df[~df["inchi_from_smiles"].isin(df_test["inchi_from_smiles"])]
@@ -253,7 +250,7 @@ def tune_classifiers(
     x, y, = get_balanced_data_adasyn(random_seed=args.random_seed, x=x, y=y)
 
     scoring = make_scorer(accuracy_score, greater_is_better=True)
-    skf = StratifiedKFold(n_splits=nsplits, shuffle=True, random_state=args.random_seed)
+    skf = StratifiedKFold(n_splits=args.nsplits, shuffle=True, random_state=args.random_seed)
     cv_strategy = list(skf.split(x, y))
 
     opt = BayesSearchCV(
@@ -263,7 +260,7 @@ def tune_classifiers(
         cv=cv_strategy,
         n_iter=120,
         n_points=5,  # number of hyperparameter sets evaluated at the same time
-        n_jobs=n_jobs,
+        n_jobs=args.n_jobs,
         return_train_score=True,
         refit=False,
         optimizer_kwargs={"base_estimator": "GP"},  # optmizer parameters: use Gaussian Process (GP)
@@ -379,18 +376,14 @@ def train_classifier_with_best_hyperparamters(
 
 def tune_and_train_classifiers(
     df: pd.DataFrame, 
-    nsplits: int, 
     df_test: pd.DataFrame,
-    n_jobs: int,
     search_spaces: Dict,
     model,
 ):
     best_params = tune_classifiers(
         df=df,
-        nsplits=nsplits,
         df_test=df_test,
         search_spaces=search_spaces,
-        n_jobs=n_jobs,
         model=model,
     )
 
@@ -402,7 +395,7 @@ def tune_and_train_classifiers(
     return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
-def tune_and_train_XGBClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+def tune_and_train_XGBClassifier(df: pd.DataFrame, df_test: pd.DataFrame):
     model = XGBClassifier
     search_spaces = {
         "alpha": Real(1.0, 4.0, "uniform"),
@@ -427,16 +420,14 @@ def tune_and_train_XGBClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.Dat
     log.info("Started tuning XGBClassifier")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
-        nsplits=nsplits,
         df_test=df_test,
-        n_jobs=1,
         search_spaces=search_spaces,
         model=model,
     )
     log.info("Finished tuning XGBClassifier")
     return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
-def tune_and_train_ExtraTreesClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+def tune_and_train_ExtraTreesClassifier(df: pd.DataFrame, df_test: pd.DataFrame):
     model = ExtraTreesClassifier
     search_spaces = {
         "criterion": Categorical(["gini", "entropy", "log_loss"]),
@@ -450,9 +441,7 @@ def tune_and_train_ExtraTreesClassifier(df: pd.DataFrame, nsplits: int, df_test:
     log.info("Started tuning ExtraTreesClassifier")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
-        nsplits=nsplits,
         df_test=df_test,
-        n_jobs=1,
         search_spaces=search_spaces,
         model=model,
     )
@@ -460,7 +449,7 @@ def tune_and_train_ExtraTreesClassifier(df: pd.DataFrame, nsplits: int, df_test:
     return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
-def tune_and_train_RandomForestClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+def tune_and_train_RandomForestClassifier(df: pd.DataFrame, df_test: pd.DataFrame):
     model = RandomForestClassifier
     search_spaces = {
         "criterion": Categorical(["gini", "entropy", "log_loss"]),
@@ -473,9 +462,7 @@ def tune_and_train_RandomForestClassifier(df: pd.DataFrame, nsplits: int, df_tes
     log.info("Started tuning RandomForestClassifier")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
-        nsplits=nsplits,
         df_test=df_test,
-        n_jobs=1,
         search_spaces=search_spaces,
         model=model,
     )
@@ -483,7 +470,7 @@ def tune_and_train_RandomForestClassifier(df: pd.DataFrame, nsplits: int, df_tes
     return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
-def tune_and_train_MLPClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+def tune_and_train_MLPClassifier(df: pd.DataFrame, df_test: pd.DataFrame):
     model = MLPClassifier
     search_spaces = {
         "random_state": Categorical([args.random_seed]),
@@ -498,9 +485,7 @@ def tune_and_train_MLPClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.Dat
     log.info("Started tuning MLPClassifier")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
-        nsplits=nsplits,
         df_test=df_test,
-        n_jobs=1,
         search_spaces=search_spaces,
         model=model,
     )
@@ -508,7 +493,7 @@ def tune_and_train_MLPClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.Dat
     return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
-def tune_and_train_HistGradientBoostingClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+def tune_and_train_HistGradientBoostingClassifier(df: pd.DataFrame, df_test: pd.DataFrame):
     model = HistGradientBoostingClassifier
     search_spaces = {
         "learning_rate": Real(0.01, 0.4, "uniform"),
@@ -520,9 +505,7 @@ def tune_and_train_HistGradientBoostingClassifier(df: pd.DataFrame, nsplits: int
     log.info("Started tuning HistGradientBoostingClassifier")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
-        nsplits=nsplits,
         df_test=df_test,
-        n_jobs=1,
         search_spaces=search_spaces,
         model=model,
     )
@@ -530,7 +513,7 @@ def tune_and_train_HistGradientBoostingClassifier(df: pd.DataFrame, nsplits: int
     return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
-def tune_and_train_LogisticRegressionCV(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+def tune_and_train_LogisticRegressionCV(df: pd.DataFrame, df_test: pd.DataFrame):
     model = LogisticRegressionCV
     search_spaces = {
         "random_state": Categorical([args.random_seed]),
@@ -540,9 +523,7 @@ def tune_and_train_LogisticRegressionCV(df: pd.DataFrame, nsplits: int, df_test:
     log.info("Started tuning LogisticRegressionCV")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
-        nsplits=nsplits,
         df_test=df_test,
-        n_jobs=1,
         search_spaces=search_spaces,
         model=model,
     )
@@ -550,7 +531,7 @@ def tune_and_train_LogisticRegressionCV(df: pd.DataFrame, nsplits: int, df_test:
     return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
-def tune_and_train_GaussianProcessClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+def tune_and_train_GaussianProcessClassifier(df: pd.DataFrame, df_test: pd.DataFrame):
     model = GaussianProcessClassifier
     search_spaces = {
         "max_iter_predict": Integer(80, 200),
@@ -559,9 +540,7 @@ def tune_and_train_GaussianProcessClassifier(df: pd.DataFrame, nsplits: int, df_
     log.info("Started tuning GaussianProcessClassifier")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
-        nsplits=nsplits,
         df_test=df_test,
-        n_jobs=1,
         search_spaces=search_spaces,
         model=model,
     )
@@ -569,7 +548,7 @@ def tune_and_train_GaussianProcessClassifier(df: pd.DataFrame, nsplits: int, df_
     return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
-def tune_and_train_LinearSVC(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+def tune_and_train_LinearSVC(df: pd.DataFrame, df_test: pd.DataFrame):
     model = LinearSVC
     search_spaces = {
         "penalty": Categorical(["l1", "l2"]),
@@ -581,9 +560,7 @@ def tune_and_train_LinearSVC(df: pd.DataFrame, nsplits: int, df_test: pd.DataFra
     log.info("Started tuning LinearSVC")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
-        nsplits=nsplits,
         df_test=df_test,
-        n_jobs=1,
         search_spaces=search_spaces,
         model=model,
     )
@@ -591,7 +568,7 @@ def tune_and_train_LinearSVC(df: pd.DataFrame, nsplits: int, df_test: pd.DataFra
     return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
-def tune_and_train_PassiveAggressiveClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+def tune_and_train_PassiveAggressiveClassifier(df: pd.DataFrame, df_test: pd.DataFrame):
     model = PassiveAggressiveClassifier
     search_spaces = {
         "max_iter": Integer(800, 1200),
@@ -601,9 +578,7 @@ def tune_and_train_PassiveAggressiveClassifier(df: pd.DataFrame, nsplits: int, d
     log.info("Started tuning PassiveAggressiveClassifier")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
-        nsplits=nsplits,
         df_test=df_test,
-        n_jobs=1,
         search_spaces=search_spaces,
         model=model,
     )
@@ -611,7 +586,7 @@ def tune_and_train_PassiveAggressiveClassifier(df: pd.DataFrame, nsplits: int, d
     return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
-def tune_and_train_Perceptron(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+def tune_and_train_Perceptron(df: pd.DataFrame, df_test: pd.DataFrame):
     model = Perceptron
     search_spaces = {
         "penalty": Categorical(["l1", "l2", "elasticnet"]),
@@ -623,9 +598,7 @@ def tune_and_train_Perceptron(df: pd.DataFrame, nsplits: int, df_test: pd.DataFr
     log.info("Started tuning Perceptron")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
-        nsplits=nsplits,
         df_test=df_test,
-        n_jobs=1,
         search_spaces=search_spaces,
         model=model,
     )
@@ -633,7 +606,7 @@ def tune_and_train_Perceptron(df: pd.DataFrame, nsplits: int, df_test: pd.DataFr
     return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
-def tune_and_train_LogisticRegression(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+def tune_and_train_LogisticRegression(df: pd.DataFrame, df_test: pd.DataFrame):
     model = LogisticRegression
     search_spaces = {
         "penalty": Categorical(["l1", "l2", "elasticnet"]),
@@ -645,9 +618,7 @@ def tune_and_train_LogisticRegression(df: pd.DataFrame, nsplits: int, df_test: p
     log.info("Started tuning LogisticRegression")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
-        nsplits=nsplits,
         df_test=df_test,
-        n_jobs=1,
         search_spaces=search_spaces,
         model=model,
     )
@@ -655,7 +626,7 @@ def tune_and_train_LogisticRegression(df: pd.DataFrame, nsplits: int, df_test: p
     return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
-def tune_and_train_SVC(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+def tune_and_train_SVC(df: pd.DataFrame, df_test: pd.DataFrame):
     model = SVC
     search_spaces = {
         "kernel": Categorical(["linear", "poly", "rbf", "sigmoid", "precomputed"]),
@@ -666,9 +637,7 @@ def tune_and_train_SVC(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
     log.info("Started tuning SVC")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
-        nsplits=nsplits,
         df_test=df_test,
-        n_jobs=1,
         search_spaces=search_spaces,
         model=model,
     )
@@ -676,7 +645,7 @@ def tune_and_train_SVC(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
     return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
-def tune_and_train_RidgeClassifierCV(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+def tune_and_train_RidgeClassifierCV(df: pd.DataFrame, df_test: pd.DataFrame):
     model = RidgeClassifierCV
     search_spaces = {
         "cv": Categorical([None]),
@@ -684,9 +653,7 @@ def tune_and_train_RidgeClassifierCV(df: pd.DataFrame, nsplits: int, df_test: pd
     log.info("Started tuning RidgeClassifierCV")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
-        nsplits=nsplits,
         df_test=df_test,
-        n_jobs=1,
         search_spaces=search_spaces,
         model=model,
     )
@@ -694,7 +661,7 @@ def tune_and_train_RidgeClassifierCV(df: pd.DataFrame, nsplits: int, df_test: pd
     return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
-def tune_and_train_RidgeClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+def tune_and_train_RidgeClassifier(df: pd.DataFrame, df_test: pd.DataFrame):
     model = RidgeClassifier
     search_spaces = {
         "solver": Categorical(["auto", "svd", "cholesky", "lsqr", "sparse_cg", "sag", "saga", "lbfgs"]),
@@ -703,9 +670,7 @@ def tune_and_train_RidgeClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.D
     log.info("Started tuning RidgeClassifier")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
-        nsplits=nsplits,
         df_test=df_test,
-        n_jobs=1,
         search_spaces=search_spaces,
         model=model,
     )
@@ -713,7 +678,7 @@ def tune_and_train_RidgeClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.D
     return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
-def tune_and_train_GradientBoostingClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+def tune_and_train_GradientBoostingClassifier(df: pd.DataFrame, df_test: pd.DataFrame):
     model = GradientBoostingClassifier
     search_spaces = {
         "loss": Categorical(["log_loss", "exponential"]),
@@ -727,9 +692,7 @@ def tune_and_train_GradientBoostingClassifier(df: pd.DataFrame, nsplits: int, df
     log.info("Started tuning GradientBoostingClassifier")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
-        nsplits=nsplits,
         df_test=df_test,
-        n_jobs=1,
         search_spaces=search_spaces,
         model=model,
     )
@@ -762,7 +725,6 @@ def run_classifiers_MACCS(datasets: Dict[str, pd.DataFrame], df_test: str) -> No
         log.info(f" \n Currently running the classifier {classifier}")
         _, _, _, _ = classifiers[classifier](
             df=train_data,
-            nsplits=args.nsplits,
             df_test=test_data,
         )
 
@@ -792,7 +754,6 @@ def run_classifiers_RDK(datasets: Dict[str, pd.DataFrame], df_test: str) -> None
         log.info(f" \n Currently running the classifier {classifier}")
         _, _, _, _ = classifiers[classifier](
             df=train_data,
-            nsplits=args.nsplits,
             df_test=test_data,
         )
 
@@ -822,7 +783,6 @@ def run_classifiers_Morgan(datasets: Dict[str, pd.DataFrame], df_test: str) -> N
         log.info(f" \n Currently running the classifier {classifier}")
         _, _, _, _ = classifiers[classifier](
             df=train_data,
-            nsplits=args.nsplits,
             df_test=test_data,
         )
 
@@ -852,7 +812,6 @@ def run_classifiers_Molformer(datasets: Dict[str, pd.DataFrame], df_test: str) -
         log.info(f" \n Currently running the classifier {classifier}")
         _, _, _, _ = classifiers[classifier](
             df=train_data,
-            nsplits=args.nsplits,
             df_test=test_data,
         )
 
