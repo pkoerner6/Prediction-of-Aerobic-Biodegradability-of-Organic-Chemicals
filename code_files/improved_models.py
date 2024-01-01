@@ -350,7 +350,7 @@ def train_classifier_with_best_hyperparamters(
         test_set_sizes=test_set_sizes,
         use_adasyn=True,
         random_seed=args.random_seed,
-        model=XGBClassifier(),
+        model=model,
     )
 
 
@@ -489,11 +489,11 @@ def tune_and_train_MLPClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.Dat
         "random_state": Categorical([args.random_seed]),
         "activation": Categorical(["identity", "logistic", "tanh", "relu"]),
         "solver": Categorical(["lbfgs", "sgd", "adam"]),
-        "alpha": Real(0.00001, 0.01, "uniform"),
+        "alpha": Real(0.000001, 0.01, "uniform"),
         "learning_rate_init": Real(0.0001, 0.01, "uniform"),
-        "max_iter": Integer(150, 250),
+        "max_iter": Integer(240, 400),
         "early_stopping": Categorical([True]),
-        "hidden_layer_sizes": Integer(50, 150),
+        "hidden_layer_sizes": Integer(120, 250),
     }
     log.info("Started tuning MLPClassifier")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
@@ -534,8 +534,6 @@ def tune_and_train_LogisticRegressionCV(df: pd.DataFrame, nsplits: int, df_test:
     model = LogisticRegressionCV
     search_spaces = {
         "random_state": Categorical([args.random_seed]),
-        # "cv": Integer(5),
-        "penalty": Categorical(["l1", "l2", "elasticnet"]),
         "solver": Categorical(["lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"]),
         "max_iter": Integer(80, 200),
     }

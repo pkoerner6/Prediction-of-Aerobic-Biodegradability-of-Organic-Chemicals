@@ -857,7 +857,7 @@ def format_class_data_paper(df: pd.DataFrame) -> pd.DataFrame:
 def load_class_data_paper(
     load_new=False, # Set to True when running for the first time
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    if load_new:
+    if  :
         xlsx = pd.ExcelFile("datasets/external_data/Data_huang_zhang.xlsx")
         tab_names = [
             "ClassDataset_original",

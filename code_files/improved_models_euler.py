@@ -289,7 +289,7 @@ def train_classifier_with_best_hyperparamters(
         test_set_sizes=test_set_sizes,
         use_adasyn=True,
         random_seed=args.random_seed,
-        model=XGBClassifier(),
+        model=model,
     )
 
 
@@ -473,8 +473,6 @@ def tune_and_train_LogisticRegressionCV(df: pd.DataFrame, nsplits: int, df_test:
     model = LogisticRegressionCV
     search_spaces = {
         "random_state": Categorical([args.random_seed]),
-        # "cv": Integer(5),
-        "penalty": Categorical(["l1", "l2", "elasticnet"]),
         "solver": Categorical(["lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"]),
         "max_iter": Integer(80, 200),
     }
