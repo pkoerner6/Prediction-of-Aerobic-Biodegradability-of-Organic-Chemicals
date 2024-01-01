@@ -1,5 +1,3 @@
-""" Replication of the paper by Huang and Zhang """
-""" Requirements are in requirements_huang_zhang_replication.tex"""
 
 import argparse
 import pickle
@@ -268,7 +266,6 @@ def run_classification() -> None:
         log.info(
             f" \n Newly trained classification model trained on paper data, {args.nsplits}-fold, tested on test set"
         )
-        print(df_paper_class.columns) # TODO
         train_XGBClassifier(
             df=df_paper_class,
             random_seed=args.random_state,
@@ -277,7 +274,7 @@ def run_classification() -> None:
             include_speciation=args.chemical_speciation_included,
             df_test=df_paper_class,
             dataset_name="df_classification_paper",
-            target_col="label",
+            target_col="y_true",
         )
         log.info(" \n Newly trained classification model trained on all paper data, tested on additional data")
         train_classifier_on_all_data_and_test_on_additional(

@@ -1,5 +1,3 @@
-"""File to create all dataframes that will be used in the improved_data.py and improved_data_analysis.py file"""
-"""Prior to this file, the data_processing.py file needs to be run"""
 
 import pandas as pd
 import structlog

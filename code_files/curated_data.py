@@ -1,5 +1,3 @@
-"""XGBoost models with hyperparameters from HUang and Zhang will be trained on different improved datasets"""
-"""Prior to this file, the files data_processing.py and creating_datasets.py need to be run"""
 
 import pandas as pd
 import numpy as np
@@ -32,12 +30,6 @@ parser.add_argument(
     "--random_seed",
     type=int,
     default=42,
-)
-parser.add_argument(
-    "--train_new",
-    default=False,
-    action=argparse.BooleanOptionalAction,
-    help="Whether to train the models again or use previous results to just plot",
 )
 parser.add_argument(
     "--test_set",

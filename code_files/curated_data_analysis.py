@@ -1,5 +1,3 @@
-"""Analysis of the datasets resulting models when datapoints are removed based on BIOWIN5 and BIOWIN6"""
-"""Prior to this file, the files data_processing.py and creating_datasets.py need to be run"""
 
 import pandas as pd
 import numpy as np

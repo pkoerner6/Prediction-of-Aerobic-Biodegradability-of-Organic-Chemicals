@@ -1,4 +1,3 @@
-"""Needs to be run with venv 'molformer_venv'"""
 
 import argparse
 import pandas as pd
@@ -22,10 +21,20 @@ from sklearn.model_selection import train_test_split
 from lazypredict.Supervised import LazyClassifier
 from sklearn.utils import all_estimators
 from sklearn.base import ClassifierMixin
-import lightgbm as lgbm
 from xgboost import XGBClassifier
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.gaussian_process import GaussianProcessClassifier
+from sklearn.svm import LinearSVC
+from sklearn.svm import SVC
+from sklearn.linear_model import PassiveAggressiveClassifier
+from sklearn.linear_model import LogisticRegressionCV
+from sklearn.linear_model import Perceptron
+from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import RidgeClassifierCV
+from sklearn.linear_model import RidgeClassifier
 from sklearn.neural_network import MLPClassifier
 
 np.int = int  # Because of scikit-optimize
@@ -48,6 +57,8 @@ from code_files.processing_functions import convert_to_rdk_fingerprints
 from code_files.ml_functions import get_balanced_data_adasyn
 from code_files.ml_functions import report_perf_hyperparameter_tuning
 from code_files.ml_functions import get_class_results
+from code_files.ml_functions import run_balancing_and_training
+from code_files.ml_functions import split_classification_df_with_fixed_test_set
 from MolFormer.finetune.tokenizer.tokenizer import MolTranBertTokenizer
 from MolFormer.training.train_pubchem_light import LightningModule
 
@@ -172,9 +183,6 @@ def create_input_classification_other_features(df: pd.DataFrame, feature_type="M
     return x_array
 
 
-
-
-
 def get_classification_model_input(df: pd.DataFrame, df_test: pd.DataFrame) -> Tuple[np.ndarray, pd.Series, np.ndarray, pd.Series]:
     _, test_df = train_test_split(df_test, test_size=0.2, random_state=args.random_seed)
     train_df = df[~df["inchi_from_smiles"].isin(test_df["inchi_from_smiles"])]
@@ -215,7 +223,6 @@ def run_lazy_classifier(df: pd.DataFrame, df_test: pd.DataFrame) -> None:
     ]
 
     classifiers.append(XGBClassifier)
-    # classifiers.append(lgbm.LGBMClassifier)
 
     clf = LazyClassifier(
         verbose=0,
@@ -240,7 +247,6 @@ def tune_classifiers(
 ):
     df_tune = df[~df["inchi_from_smiles"].isin(df_test["inchi_from_smiles"])]
     df_tune = df_tune[~df_tune["cas"].isin(df_test["cas"])]
-    assert len(df_tune) + len(df_test) == len(df)
 
     x = create_input_classification_other_features(df_tune, feature_type=args.feature_type)
     y = df_tune["y_true"]
@@ -277,31 +283,98 @@ def tune_classifiers(
     return best_params
 
 
+def skf_class_fixed_testset_other_features(
+    df: pd.DataFrame,
+    df_test: pd.DataFrame,
+    feature_type: str,
+    paper: bool,
+) -> Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray], List[np.ndarray], List[pd.DataFrame], List[int]]:
+
+    cols=["cas", "smiles", "y_true"]
+
+    train_sets, test_sets = split_classification_df_with_fixed_test_set(
+        df=df,
+        df_test=df_test,
+        nsplits=args.nsplits,
+        random_seed=args.random_seed,
+        cols=cols,
+        paper=paper,
+    )
+    x_train_fold_lst: List[np.ndarray] = []
+    y_train_fold_lst: List[np.ndarray] = []
+    x_test_fold_lst: List[np.ndarray] = []
+    y_test_fold_lst: List[np.ndarray] = []
+    df_test_lst: List[pd.DataFrame] = []
+    test_set_sizes: List[int] = []
+
+    for split in range(args.nsplits):
+        x_train_fold = train_sets[split][cols]
+        x_train_fold_lst.append(create_input_classification_other_features(x_train_fold, feature_type))
+        y_train_fold_lst.append(train_sets[split]["y_true"])
+        x_test_fold = test_sets[split][cols]
+        x_test_fold_lst.append(create_input_classification_other_features(x_test_fold, feature_type))
+        y_test_fold_lst.append(test_sets[split]["y_true"])
+        df_test_set = test_sets[split].copy()
+        df_test_lst.append(df_test_set)
+        test_set_sizes.append(len(df_test_set))
+    return x_train_fold_lst, y_train_fold_lst, x_test_fold_lst, y_test_fold_lst, df_test_lst, test_set_sizes
+
+
 def train_classifier_with_best_hyperparamters(
-    df: pd.DataFrame, 
-    df_test: pd.DataFrame, 
+    df: pd.DataFrame,
+    df_test: pd.DataFrame,
     model,
 ):  
-    df_train = df[~df["cas"].isin(df_test["cas"])]
-    df_train = df_train[~df_train["inchi_from_smiles"].isin(df_test["inchi_from_smiles"])]
+    df.reset_index(inplace=True, drop=True)
 
-    assert len(df_train) + len(df_test) == len(df)
-    x = create_input_classification_other_features(df=df_train, feature_type=args.feature_type)
-    y = df_train["y_true"]
-    x, y = get_balanced_data_adasyn(random_seed=args.random_seed, x=x, y=y)
+    (
+        x_train_fold_lst,
+        y_train_fold_lst,
+        x_test_fold_lst,
+        y_test_fold_lst,
+        df_test_lst,
+        test_set_sizes,
+    ) = skf_class_fixed_testset_other_features(
+        df=df,
+        df_test=df_test,
+        feature_type=args.feature_type,
+        paper=False,
+    )
 
-    model.fit(x, y)
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = run_balancing_and_training(
+        df=df,
+        x_train_fold_lst=x_train_fold_lst, 
+        y_train_fold_lst=y_train_fold_lst, 
+        x_test_fold_lst=x_test_fold_lst, 
+        y_test_fold_lst=y_test_fold_lst,
+        test_set_sizes=test_set_sizes,
+        use_adasyn=True,
+        random_seed=args.random_seed,
+        model=XGBClassifier(),
+    )
 
-    x_test = create_input_classification_other_features(df=df_test, feature_type=args.feature_type)
-    prediction = model.predict(x_test)
 
-    accu, f1, sensitivity, specificity = get_class_results(true=df_test["y_true"], pred=prediction)
-    metrics_all = ["accuracy", "sensitivity", "specificity", "f1"]
-    metrics_values_all = [accu, sensitivity, specificity, f1]
-    for metric, metric_values in zip(metrics_all, metrics_values_all):
-        log.info(f"{metric}: ", score="{:.1f}".format(metric_values * 100))
-    
-    return accu, f1, sensitivity, specificity
+    metrics = ["balanced accuracy", "sensitivity", "specificity"]
+    metrics_values = [
+        lst_accu,
+        lst_sensitivity,
+        lst_specificity,
+    ]
+    for metric, metric_values in zip(metrics, metrics_values):
+        log.info(
+            f"{metric} for {args.feature_type}: ",
+            score="{:.1f}".format(np.mean(metric_values) * 100) + " ± " + "{:.1f}".format(np.std(metric_values) * 100),
+        )
+    log.info(
+        f"F1 for {args.feature_type}: ",
+        score="{:.2f}".format(np.mean(lst_f1)) + " ± " + "{:.2f}".format(np.std(lst_f1)),
+    )
+    return (
+        lst_accu,
+        lst_sensitivity,
+        lst_specificity,
+        lst_f1,
+    )
 
 
 def tune_and_train_classifiers(
@@ -321,12 +394,12 @@ def tune_and_train_classifiers(
         model=model,
     )
 
-    accu, f1, sensitivity, specificity = train_classifier_with_best_hyperparamters(
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = train_classifier_with_best_hyperparamters(
         df=df,
         df_test=df_test,
         model=model(**best_params),
     )
-    return accu, f1, sensitivity, specificity
+    return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
 def tune_and_train_XGBClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
@@ -351,7 +424,8 @@ def tune_and_train_XGBClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.Dat
         "tree_method": Categorical(["exact"]),
         "validate_parameters": Categorical([True]),
     }
-    accu, f1, sensitivity, specificity = tune_and_train_classifiers(
+    log.info("Started tuning XGBClassifier")
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
         nsplits=nsplits,
         df_test=df_test,
@@ -359,7 +433,8 @@ def tune_and_train_XGBClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.Dat
         search_spaces=search_spaces,
         model=model,
     )
-    return accu, f1, sensitivity, specificity
+    log.info("Finished tuning XGBClassifier")
+    return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 def tune_and_train_ExtraTreesClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
     model = ExtraTreesClassifier
@@ -372,7 +447,8 @@ def tune_and_train_ExtraTreesClassifier(df: pd.DataFrame, nsplits: int, df_test:
         "n_estimators": Integer(50, 1000),
         "random_state": Categorical([args.random_seed]),
     }
-    accu, f1, sensitivity, specificity = tune_and_train_classifiers(
+    log.info("Started tuning ExtraTreesClassifier")
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
         nsplits=nsplits,
         df_test=df_test,
@@ -380,7 +456,8 @@ def tune_and_train_ExtraTreesClassifier(df: pd.DataFrame, nsplits: int, df_test:
         search_spaces=search_spaces,
         model=model,
     )
-    return accu, f1, sensitivity, specificity
+    log.info("Finished tuning ExtraTreesClassifier")
+    return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
 def tune_and_train_RandomForestClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
@@ -393,7 +470,8 @@ def tune_and_train_RandomForestClassifier(df: pd.DataFrame, nsplits: int, df_tes
         "n_estimators": Integer(1000, 2500),
         "random_state": Categorical([args.random_seed]),
     }
-    accu, f1, sensitivity, specificity = tune_and_train_classifiers(
+    log.info("Started tuning RandomForestClassifier")
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
         nsplits=nsplits,
         df_test=df_test,
@@ -401,7 +479,8 @@ def tune_and_train_RandomForestClassifier(df: pd.DataFrame, nsplits: int, df_tes
         search_spaces=search_spaces,
         model=model,
     )
-    return accu, f1, sensitivity, specificity
+    log.info("Finished tuning RandomForestClassifier")
+    return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
 def tune_and_train_MLPClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
@@ -414,9 +493,10 @@ def tune_and_train_MLPClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.Dat
         "learning_rate_init": Real(0.0001, 0.01, "uniform"),
         "max_iter": Integer(150, 250),
         "early_stopping": Categorical([True]),
-
+        "hidden_layer_sizes": Integer(50, 150),
     }
-    accu, f1, sensitivity, specificity = tune_and_train_classifiers(
+    log.info("Started tuning MLPClassifier")
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
         nsplits=nsplits,
         df_test=df_test,
@@ -424,102 +504,359 @@ def tune_and_train_MLPClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.Dat
         search_spaces=search_spaces,
         model=model,
     )
-    return accu, f1, sensitivity, specificity
+    log.info("Finished tuning MLPClassifier")
+    return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
-# def tune_and_train_LGBMClassifier( # TODO
-#     df: pd.DataFrame,
-#     random_seed: int,
-#     nsplits: int,
-#     include_speciation: bool,
-#     df_test: pd.DataFrame,
-#     dataset_name: str,
-#     n_jobs: int,
-# ) -> Tuple[List[float], List[float], List[float], List[float]]:
-#     model = lgbm.LGBMClassifier
-#     search_spaces = {
-#         "boosting_type": Categorical(["gbdt"]),
-#         "learning_rate": Real(0.001, 0.1, "uniform"),
-#         "max_depth": Categorical([-1]),
-#         "n_estimators": Integer(100, 1600),
-#         "num_leaves": Integer(100, 1000),
-#         "objective": Categorical(["binary"]),
-#     }
-
-#     accu, f1, sensitivity, specificity = tune_and_train_classifiers(
-#         df=df,
-#         random_seed=random_seed,
-#         nsplits=nsplits,
-#         search_spaces=search_spaces,
-#         include_speciation=include_speciation,
-#         df_test=df_test,
-#         dataset_name=dataset_name,
-#         n_jobs=n_jobs,
-#         model=model,
-#     )
-#     return accu, f1, sensitivity, specificity
-
-# def tune_and_train_BaggingClassifier( # TODO
-#     df: pd.DataFrame,
-#     random_seed: int,
-#     nsplits: int,
-#     include_speciation: bool,
-#     df_test: pd.DataFrame,
-#     dataset_name: str,
-#     n_jobs: int,
-# ) -> Tuple[List[float], List[float], List[float], List[float]]:
-#     model = BaggingClassifier
-#     search_spaces = {
-#         "max_features": Integer(1, 164),
-#         "max_samples": Integer(5, 3000),
-#         "n_estimators": Integer(200, 3000),
-#         "n_jobs": Categorical([-1]),
-#         "random_state": Categorical([random_seed]),
-#     }
-
-#     accu, f1, sensitivity, specificity = tune_and_train_classifiers(
-#         df=df,
-#         random_seed=random_seed,
-#         nsplits=nsplits,
-#         search_spaces=search_spaces,
-#         include_speciation=include_speciation,
-#         df_test=df_test,
-#         dataset_name=dataset_name,
-#         n_jobs=n_jobs,
-#         model=model,
-#     )
-#     return accu, f1, sensitivity, specificity
-
-
-
-def run_and_plot_classifiers(df_class: pd.DataFrame) -> None:
-
-    train_data, test_data = train_test_split(df_class, test_size=0.2, random_state=args.random_seed)
-
-    classifiers = {
-        # "XGBClassifier": tune_and_train_XGBClassifier,
-        # "LGBMClassifier": tune_and_train_LGBMClassifier,
-        "ExtraTreesClassifier": tune_and_train_ExtraTreesClassifier,
-        "RandomForestClassifier": tune_and_train_RandomForestClassifier,
-        # "BaggingClassifier": tune_and_train_BaggingClassifier,
+def tune_and_train_HistGradientBoostingClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+    model = HistGradientBoostingClassifier
+    search_spaces = {
+        "learning_rate": Real(0.01, 0.4, "uniform"),
+        "max_iter": Integer(80, 200),
+        "max_leaf_nodes": Integer(25, 50),
+        "min_samples_leaf": Integer(10, 25),
+        "random_state": Categorical([args.random_seed]),
     }
+    log.info("Started tuning HistGradientBoostingClassifier")
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
+        df=df,
+        nsplits=nsplits,
+        df_test=df_test,
+        n_jobs=1,
+        search_spaces=search_spaces,
+        model=model,
+    )
+    log.info("Finished tuning HistGradientBoostingClassifier")
+    return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
-    accuracy_all = []
-    f1_all = []
-    sensitivity_all = []
-    specificity_all = []
+
+def tune_and_train_LogisticRegressionCV(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+    model = LogisticRegressionCV
+    search_spaces = {
+        "random_state": Categorical([args.random_seed]),
+        # "cv": Integer(5),
+        "penalty": Categorical(["l1", "l2", "elasticnet"]),
+        "solver": Categorical(["lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"]),
+        "max_iter": Integer(80, 200),
+    }
+    log.info("Started tuning LogisticRegressionCV")
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
+        df=df,
+        nsplits=nsplits,
+        df_test=df_test,
+        n_jobs=1,
+        search_spaces=search_spaces,
+        model=model,
+    )
+    log.info("Finished tuning LogisticRegressionCV")
+    return lst_accu, lst_sensitivity, lst_specificity, lst_f1
+
+
+def tune_and_train_GaussianProcessClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+    model = GaussianProcessClassifier
+    search_spaces = {
+        "max_iter_predict": Integer(80, 200),
+        "random_state": Categorical([args.random_seed]),
+    }
+    log.info("Started tuning GaussianProcessClassifier")
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
+        df=df,
+        nsplits=nsplits,
+        df_test=df_test,
+        n_jobs=1,
+        search_spaces=search_spaces,
+        model=model,
+    )
+    log.info("Finished tuning GaussianProcessClassifier")
+    return lst_accu, lst_sensitivity, lst_specificity, lst_f1
+
+
+def tune_and_train_LinearSVC(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+    model = LinearSVC
+    search_spaces = {
+        "penalty": Categorical(["l1", "l2"]),
+        "loss": Categorical(["hinge", "squared_hinge"]),
+        "multi_class": Categorical(["ovr", "crammer_singer"]),
+        "max_iter": Integer(800, 1200),
+        "random_state": Categorical([args.random_seed]),
+    }
+    log.info("Started tuning LinearSVC")
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
+        df=df,
+        nsplits=nsplits,
+        df_test=df_test,
+        n_jobs=1,
+        search_spaces=search_spaces,
+        model=model,
+    )
+    log.info("Finished tuning LinearSVC")
+    return lst_accu, lst_sensitivity, lst_specificity, lst_f1
+
+
+def tune_and_train_PassiveAggressiveClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+    model = PassiveAggressiveClassifier
+    search_spaces = {
+        "max_iter": Integer(800, 1200),
+        "early_stopping": Categorical([True]),
+        "random_state": Categorical([args.random_seed]),
+    }
+    log.info("Started tuning PassiveAggressiveClassifier")
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
+        df=df,
+        nsplits=nsplits,
+        df_test=df_test,
+        n_jobs=1,
+        search_spaces=search_spaces,
+        model=model,
+    )
+    log.info("Finished tuning PassiveAggressiveClassifier")
+    return lst_accu, lst_sensitivity, lst_specificity, lst_f1
+
+
+def tune_and_train_Perceptron(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+    model = Perceptron
+    search_spaces = {
+        "penalty": Categorical(["l1", "l2", "elasticnet"]),
+        "alpha": Real(0.00001, 0.001, "uniform"),
+        "max_iter": Integer(800, 1200),
+        "random_state": Categorical([args.random_seed]),
+        "early_stopping": Categorical([True]),
+    }
+    log.info("Started tuning Perceptron")
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
+        df=df,
+        nsplits=nsplits,
+        df_test=df_test,
+        n_jobs=1,
+        search_spaces=search_spaces,
+        model=model,
+    )
+    log.info("Finished tuning Perceptron")
+    return lst_accu, lst_sensitivity, lst_specificity, lst_f1
+
+
+def tune_and_train_LogisticRegression(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+    model = LogisticRegression
+    search_spaces = {
+        "penalty": Categorical(["l1", "l2", "elasticnet"]),
+        "random_state": Categorical([args.random_seed]),
+        "solver": Categorical(["lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"]),
+        "max_iter": Integer(80, 120),
+        "multi_class": Categorical(["auto", "ovr", "multinomial"]),
+    }
+    log.info("Started tuning LogisticRegression")
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
+        df=df,
+        nsplits=nsplits,
+        df_test=df_test,
+        n_jobs=1,
+        search_spaces=search_spaces,
+        model=model,
+    )
+    log.info("Finished tuning LogisticRegression")
+    return lst_accu, lst_sensitivity, lst_specificity, lst_f1
+
+
+def tune_and_train_SVC(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+    model = SVC
+    search_spaces = {
+        "kernel": Categorical(["linear", "poly", "rbf", "sigmoid", "precomputed"]),
+        "degree": Integer(2, 3),
+        "gamma": Categorical(["auto", "scale"]),
+        "random_state": Categorical([args.random_seed]),
+    }
+    log.info("Started tuning SVC")
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
+        df=df,
+        nsplits=nsplits,
+        df_test=df_test,
+        n_jobs=1,
+        search_spaces=search_spaces,
+        model=model,
+    )
+    log.info("Finished tuning SVC")
+    return lst_accu, lst_sensitivity, lst_specificity, lst_f1
+
+
+def tune_and_train_RidgeClassifierCV(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+    model = RidgeClassifierCV
+    search_spaces = {
+        "cv": Categorical([None]),
+    }
+    log.info("Started tuning RidgeClassifierCV")
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
+        df=df,
+        nsplits=nsplits,
+        df_test=df_test,
+        n_jobs=1,
+        search_spaces=search_spaces,
+        model=model,
+    )
+    log.info("Finished tuning RidgeClassifierCV")
+    return lst_accu, lst_sensitivity, lst_specificity, lst_f1
+
+
+def tune_and_train_RidgeClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+    model = RidgeClassifier
+    search_spaces = {
+        "solver": Categorical(["auto", "svd", "cholesky", "lsqr", "sparse_cg", "sag", "saga", "lbfgs"]),
+        "random_state": Categorical([args.random_seed]),
+    }
+    log.info("Started tuning RidgeClassifier")
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
+        df=df,
+        nsplits=nsplits,
+        df_test=df_test,
+        n_jobs=1,
+        search_spaces=search_spaces,
+        model=model,
+    )
+    log.info("Finished tuning RidgeClassifier")
+    return lst_accu, lst_sensitivity, lst_specificity, lst_f1
+
+
+def tune_and_train_GradientBoostingClassifier(df: pd.DataFrame, nsplits: int, df_test: pd.DataFrame):
+    model = GradientBoostingClassifier
+    search_spaces = {
+        "loss": Categorical(["log_loss", "exponential"]),
+        "learning_rate": Real(0.01, 0.4, "uniform"),
+        "n_estimators": Integer(80, 120),
+        "criterion": Categorical(["friedman_mse", "squared_error"]),
+        "max_depth": Integer(2, 5),
+        "random_state": Categorical([args.random_seed]),
+        "max_features": Categorical(["sqrt", "log2"]),
+    }
+    log.info("Started tuning GradientBoostingClassifier")
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
+        df=df,
+        nsplits=nsplits,
+        df_test=df_test,
+        n_jobs=1,
+        search_spaces=search_spaces,
+        model=model,
+    )
+    log.info("Finished tuning GradientBoostingClassifier")
+    return lst_accu, lst_sensitivity, lst_specificity, lst_f1
+
+
+def run_classifiers_MACCS(datasets: Dict[str, pd.DataFrame], df_test: str) -> None:
+    train_data = datasets[args.train_set]
+    test_data = datasets[df_test].sample(frac=0.2, random_state=args.random_seed)
+
+    if args.test_set == "df_curated_scs":
+        classifiers = {
+            "MLPClassifier": tune_and_train_MLPClassifier,
+            "HistGradientBoostingClassifier": tune_and_train_HistGradientBoostingClassifier,
+            "LogisticRegressionCV": tune_and_train_LogisticRegressionCV,
+            "GaussianProcessClassifier": tune_and_train_GaussianProcessClassifier,
+            "LinearSVC": tune_and_train_LinearSVC,
+        }
+    elif args.test_set == "df_curated_biowin":
+        classifiers = {
+            "XGBClassifier": tune_and_train_XGBClassifier,
+            "RandomForestClassifier": tune_and_train_RandomForestClassifier,
+            "ExtraTreesClassifier": tune_and_train_ExtraTreesClassifier,
+            "HistGradientBoostingClassifier": tune_and_train_HistGradientBoostingClassifier,
+            "MLPClassifier": tune_and_train_MLPClassifier,
+        }
 
     for classifier in classifiers:
         log.info(f" \n Currently running the classifier {classifier}")
-        accu, f1, sensitivity, specificity = classifiers[classifier](
+        _, _, _, _ = classifiers[classifier](
             df=train_data,
             nsplits=args.nsplits,
             df_test=test_data,
         )
-        accuracy_all.append(np.asarray(accu))
-        f1_all.append(np.asarray(f1))
-        sensitivity_all.append(np.asarray(sensitivity))
-        specificity_all.append(np.asarray(specificity))
+
+
+def run_classifiers_RDK(datasets: Dict[str, pd.DataFrame], df_test: str) -> None:
+    train_data = datasets[args.train_set]
+    test_data = datasets[df_test]
+
+    if args.test_set == "df_curated_scs":
+        classifiers = {
+            "MLPClassifier": tune_and_train_MLPClassifier,
+            "LogisticRegressionCV": tune_and_train_LogisticRegressionCV,
+            "PassiveAggressiveClassifier": tune_and_train_PassiveAggressiveClassifier,
+            "Perceptron": tune_and_train_Perceptron,
+            "LogisticRegression": tune_and_train_LogisticRegression,
+        }
+    elif args.test_set == "df_curated_biowin":
+        classifiers = {
+            "MLPClassifier": tune_and_train_MLPClassifier,
+            "GradientBoostingClassifier": tune_and_train_GradientBoostingClassifier,
+            "ExtraTreesClassifier": tune_and_train_ExtraTreesClassifier,
+            "XGBClassifier": tune_and_train_XGBClassifier,
+            "HistGradientBoostingClassifier": tune_and_train_HistGradientBoostingClassifier,
+        }
+
+    for classifier in classifiers:
+        log.info(f" \n Currently running the classifier {classifier}")
+        _, _, _, _ = classifiers[classifier](
+            df=train_data,
+            nsplits=args.nsplits,
+            df_test=test_data,
+        )
+
+
+def run_classifiers_Morgan(datasets: Dict[str, pd.DataFrame], df_test: str) -> None:
+    train_data = datasets[args.train_set]
+    test_data = datasets[df_test]
+
+    if args.test_set == "df_curated_scs":
+        classifiers = {
+            "ExtraTreesClassifier": tune_and_train_ExtraTreesClassifier,
+            "HistGradientBoostingClassifier": tune_and_train_HistGradientBoostingClassifier,
+            "XGBClassifier": tune_and_train_XGBClassifier,
+            "RandomForestClassifier": tune_and_train_RandomForestClassifier,
+            "LogisticRegressionCV": tune_and_train_LogisticRegressionCV,
+        }
+    elif args.test_set == "df_curated_biowin":
+        classifiers = {
+            "ExtraTreesClassifier": tune_and_train_ExtraTreesClassifier,
+            "RandomForestClassifier": tune_and_train_RandomForestClassifier,
+            "LogisticRegressionCV": tune_and_train_LogisticRegressionCV,
+            "XGBClassifier": tune_and_train_XGBClassifier,
+            "HistGradientBoostingClassifier": tune_and_train_HistGradientBoostingClassifier,
+        }
+
+    for classifier in classifiers:
+        log.info(f" \n Currently running the classifier {classifier}")
+        _, _, _, _ = classifiers[classifier](
+            df=train_data,
+            nsplits=args.nsplits,
+            df_test=test_data,
+        )
+
+
+def run_classifiers_Molformer(datasets: Dict[str, pd.DataFrame], df_test: str) -> None:
+    train_data = datasets[args.train_set]
+    test_data = datasets[df_test]
+
+    if args.test_set == "df_curated_scs":
+        classifiers = {
+            "SVC": tune_and_train_SVC,
+            "XGBClassifier": tune_and_train_XGBClassifier,
+            "MLPClassifier": tune_and_train_MLPClassifier,
+            "GaussianProcessClassifier": tune_and_train_GaussianProcessClassifier,
+            "RandomForestClassifier": tune_and_train_RandomForestClassifier,
+        }
+    elif args.test_set == "df_curated_biowin":
+        classifiers = {
+            "MLPClassifier": tune_and_train_MLPClassifier,
+            "SVC": tune_and_train_SVC,
+            "RidgeClassifierCV": tune_and_train_RidgeClassifierCV,
+            "XGBClassifier": tune_and_train_XGBClassifier,
+            "RidgeClassifier": tune_and_train_RidgeClassifier,
+        }
+
+    for classifier in classifiers:
+        log.info(f" \n Currently running the classifier {classifier}")
+        _, _, _, _ = classifiers[classifier](
+            df=train_data,
+            nsplits=args.nsplits,
+            df_test=test_data,
+        )
 
 
 if __name__ == "__main__":
@@ -528,4 +865,15 @@ if __name__ == "__main__":
 
     if args.run_lazy:
         run_lazy_classifier(df=datasets[args.train_set], df_test=datasets[args.test_set])
-    # run_and_plot_classifiers(df_class=df_class)
+
+    if args.feature_type == "MACCS":
+        run_classifiers_MACCS(datasets=datasets, df_test=args.test_set)
+    if args.feature_type == "RDK":
+        run_classifiers_RDK(datasets=datasets, df_test=args.test_set)
+    if args.feature_type == "Morgan":
+        run_classifiers_Morgan(datasets=datasets, df_test=args.test_set)
+    if args.feature_type == "Molformer":
+        run_classifiers_Molformer(datasets=datasets, df_test=args.test_set)
+
+
+

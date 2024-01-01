@@ -1,5 +1,3 @@
-""" Data improvement by adding the correct SMILES """
-""" Requirements are in requirements_master_thesis_env.tex"""
 
 import sys
 import os
