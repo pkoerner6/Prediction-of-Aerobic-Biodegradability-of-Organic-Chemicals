@@ -157,6 +157,9 @@ def create_features_molformer(df: pd.DataFrame, tokenizer, lm) -> pd.DataFrame:
         return Chem.MolToSmiles(Chem.MolFromSmiles(s), canonical=True, isomericSmiles=False)
 
     smiles = df.smiles.apply(canonicalize)
+    print(smiles)
+    print(lm)
+    print(tokenizer)
     embeddings = get_embeddings(lm, smiles, tokenizer).numpy()
     df = df.copy()
     df["fingerprint"] = [embedding.tolist() for embedding in embeddings]
@@ -260,7 +263,7 @@ def tune_classifiers(
         cv=cv_strategy,
         n_iter=120,
         n_points=5,  # number of hyperparameter sets evaluated at the same time
-        n_jobs=args.n_jobs,
+        n_jobs=args.njobs,
         return_train_score=True,
         refit=False,
         optimizer_kwargs={"base_estimator": "GP"},  # optmizer parameters: use Gaussian Process (GP)

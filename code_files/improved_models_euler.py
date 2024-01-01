@@ -199,7 +199,7 @@ def tune_classifiers(
         cv=cv_strategy,
         n_iter=120,
         n_points=5,  # number of hyperparameter sets evaluated at the same time
-        n_jobs=args.n_jobs,
+        n_jobs=args.njobs,
         return_train_score=True,
         refit=False,
         optimizer_kwargs={"base_estimator": "GP"},  # optmizer parameters: use Gaussian Process (GP)
