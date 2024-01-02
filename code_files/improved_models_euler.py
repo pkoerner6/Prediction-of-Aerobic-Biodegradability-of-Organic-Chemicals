@@ -551,7 +551,7 @@ def tune_and_train_LogisticRegression(df: pd.DataFrame, df_test: pd.DataFrame):
         "random_state": Categorical([args.random_seed]),
         "solver": Categorical(["lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"]),
         "max_iter": Integer(80, 120),
-        "multi_class": Categorical(["auto", "ovr", "multinomial"]),
+        "multi_class": Categorical(["auto", "ovr"]),
     }
     log.info("Started tuning LogisticRegression")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
@@ -675,7 +675,7 @@ def run_classifiers_RDK(datasets: Dict[str, pd.DataFrame]) -> None:
             # "MLPClassifier": tune_and_train_MLPClassifier,
             # "LogisticRegressionCV": tune_and_train_LogisticRegressionCV,
             # "PassiveAggressiveClassifier": tune_and_train_PassiveAggressiveClassifier,
-            "Perceptron": tune_and_train_Perceptron,
+            # "Perceptron": tune_and_train_Perceptron,
             "LogisticRegression": tune_and_train_LogisticRegression,
         }
     elif args.test_set == "df_curated_biowin":
