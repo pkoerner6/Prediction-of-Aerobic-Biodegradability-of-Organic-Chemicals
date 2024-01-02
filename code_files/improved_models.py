@@ -735,9 +735,9 @@ def run_classifiers_RDK(datasets: Dict[str, pd.DataFrame]) -> None:
 
     if args.test_set == "df_curated_scs":
         classifiers = {
-            "MLPClassifier": tune_and_train_MLPClassifier,
-            "LogisticRegressionCV": tune_and_train_LogisticRegressionCV,
-            "PassiveAggressiveClassifier": tune_and_train_PassiveAggressiveClassifier,
+            # "MLPClassifier": tune_and_train_MLPClassifier, # TODO
+            # "LogisticRegressionCV": tune_and_train_LogisticRegressionCV,
+            # "PassiveAggressiveClassifier": tune_and_train_PassiveAggressiveClassifier,
             "Perceptron": tune_and_train_Perceptron,
             "LogisticRegression": tune_and_train_LogisticRegression,
         }
@@ -793,11 +793,11 @@ def run_classifiers_Molformer(datasets: Dict[str, pd.DataFrame]) -> None:
 
     if args.test_set == "df_curated_scs":
         classifiers = {
-            # "SVC": tune_and_train_SVC,
-            "XGBClassifier": tune_and_train_XGBClassifier,
-            "MLPClassifier": tune_and_train_MLPClassifier,
-            "GaussianProcessClassifier": tune_and_train_GaussianProcessClassifier,
-            "RandomForestClassifier": tune_and_train_RandomForestClassifier,
+            "SVC": tune_and_train_SVC,
+            # "XGBClassifier": tune_and_train_XGBClassifier,
+            # "MLPClassifier": tune_and_train_MLPClassifier,
+            # "GaussianProcessClassifier": tune_and_train_GaussianProcessClassifier,
+            # "RandomForestClassifier": tune_and_train_RandomForestClassifier,
         }
     elif args.test_set == "df_curated_biowin":
         classifiers = {
