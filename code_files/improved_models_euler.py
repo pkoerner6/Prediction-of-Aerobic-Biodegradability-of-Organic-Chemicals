@@ -672,9 +672,9 @@ def run_classifiers_RDK(datasets: Dict[str, pd.DataFrame]) -> None:
     test_data = datasets[args.test_set]
     if args.test_set == "df_curated_scs":
         classifiers = {
-            "MLPClassifier": tune_and_train_MLPClassifier,
-            "LogisticRegressionCV": tune_and_train_LogisticRegressionCV,
-            "PassiveAggressiveClassifier": tune_and_train_PassiveAggressiveClassifier,
+            # "MLPClassifier": tune_and_train_MLPClassifier,
+            # "LogisticRegressionCV": tune_and_train_LogisticRegressionCV,
+            # "PassiveAggressiveClassifier": tune_and_train_PassiveAggressiveClassifier,
             "Perceptron": tune_and_train_Perceptron,
             "LogisticRegression": tune_and_train_LogisticRegression,
         }
