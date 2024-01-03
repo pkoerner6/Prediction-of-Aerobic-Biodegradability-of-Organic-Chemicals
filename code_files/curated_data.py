@@ -1,14 +1,10 @@
 
-import pandas as pd
 import numpy as np
 import structlog
 from typing import List, Tuple
-import matplotlib.pyplot as plt
 import sys
 import os
 import argparse
-from sklearn.model_selection import StratifiedKFold
-from xgboost import XGBClassifier
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from code_files.processing_functions import get_class_datasets

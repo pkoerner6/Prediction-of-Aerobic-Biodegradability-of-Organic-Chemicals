@@ -10,7 +10,6 @@ from collections import defaultdict
 from rdkit import Chem
 from rdkit.Chem.Descriptors import ExactMolWt
 from rdkit.Chem import AllChem
-import rdkit
 import sys
 import os
 import argparse
@@ -31,7 +30,6 @@ parser.add_argument(
 args = parser.parse_args()
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from code_files.processing_functions import convert_regression_df_to_input
 from code_files.processing_functions import create_dfs_for_curated_data_analysis
 
 

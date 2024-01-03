@@ -15,7 +15,6 @@ from fast_transformers.masking import LengthMask as LM
 
 log = structlog.get_logger()
 from typing import List, Dict, Tuple
-import matplotlib.pyplot as plt
 
 from sklearn.model_selection import train_test_split
 from lazypredict.Supervised import LazyClassifier
@@ -152,7 +151,6 @@ def get_embeddings(model, smiles, tokenizer, batch_size=64):
 
 
 def create_features_molformer(df: pd.DataFrame, tokenizer, lm) -> pd.DataFrame:
-    # Pretrained features
     def canonicalize(s):
         return Chem.MolToSmiles(Chem.MolFromSmiles(s), canonical=True, isomericSmiles=False)
     smiles = df.smiles.apply(canonicalize)
@@ -262,11 +260,11 @@ def tune_classifiers(
         n_jobs=args.njobs,
         return_train_score=True,
         refit=False,
-        optimizer_kwargs={"base_estimator": "GP"},  # optmizer parameters: use Gaussian Process (GP)
+        optimizer_kwargs={"base_estimator": "GP"}, 
         random_state=args.random_seed,
         verbose=0,
     )
-    overdone_control = DeltaYStopper(delta=0.0001)  # Stop if the gain of the optimization becomes too small
+    overdone_control = DeltaYStopper(delta=0.0001) 
     time_limit_control = DeadlineStopper(total_time=60 * 60 * 4)
     best_params = report_perf_hyperparameter_tuning(
         opt,
@@ -589,7 +587,6 @@ def tune_and_train_PassiveAggressiveClassifier(df: pd.DataFrame, df_test: pd.Dat
 def tune_and_train_Perceptron(df: pd.DataFrame, df_test: pd.DataFrame):
     model = Perceptron
     search_spaces = {
-        # "penalty": Categorical(["l1", "l2", "elasticnet"]),
         "alpha": Real(0.00001, 0.001, "uniform"),
         "max_iter": Integer(800, 1200),
         "random_state": Categorical([args.random_seed]),
@@ -609,7 +606,6 @@ def tune_and_train_Perceptron(df: pd.DataFrame, df_test: pd.DataFrame):
 def tune_and_train_LogisticRegression(df: pd.DataFrame, df_test: pd.DataFrame):
     model = LogisticRegression
     search_spaces = {
-        # "penalty": Categorical(["l1", "l2", "elasticnet"]),
         "random_state": Categorical([args.random_seed]),
         "solver": Categorical(["lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"]),
         "max_iter": Integer(80, 120),
@@ -664,7 +660,7 @@ def tune_and_train_RidgeClassifierCV(df: pd.DataFrame, df_test: pd.DataFrame):
 def tune_and_train_RidgeClassifier(df: pd.DataFrame, df_test: pd.DataFrame):
     model = RidgeClassifier
     search_spaces = {
-        "solver": Categorical(["auto", "svd", "cholesky", "lsqr", "sparse_cg", "sag", "saga", "lbfgs"]),
+        "solver": Categorical(["auto", "svd", "cholesky", "lsqr", "sparse_cg", "sag", "saga"]),
         "random_state": Categorical([args.random_seed]),
     }
     log.info("Started tuning RidgeClassifier")
@@ -735,9 +731,9 @@ def run_classifiers_RDK(datasets: Dict[str, pd.DataFrame]) -> None:
 
     if args.test_set == "df_curated_scs":
         classifiers = {
-            # "MLPClassifier": tune_and_train_MLPClassifier, # TODO
-            # "LogisticRegressionCV": tune_and_train_LogisticRegressionCV,
-            # "PassiveAggressiveClassifier": tune_and_train_PassiveAggressiveClassifier,
+            "MLPClassifier": tune_and_train_MLPClassifier, 
+            "LogisticRegressionCV": tune_and_train_LogisticRegressionCV,
+            "PassiveAggressiveClassifier": tune_and_train_PassiveAggressiveClassifier,
             "Perceptron": tune_and_train_Perceptron,
             "LogisticRegression": tune_and_train_LogisticRegression,
         }
@@ -794,17 +790,17 @@ def run_classifiers_Molformer(datasets: Dict[str, pd.DataFrame]) -> None:
     if args.test_set == "df_curated_scs":
         classifiers = {
             "SVC": tune_and_train_SVC,
-            # "XGBClassifier": tune_and_train_XGBClassifier,
-            # "MLPClassifier": tune_and_train_MLPClassifier,
-            # "GaussianProcessClassifier": tune_and_train_GaussianProcessClassifier,
-            # "RandomForestClassifier": tune_and_train_RandomForestClassifier,
+            "XGBClassifier": tune_and_train_XGBClassifier,
+            "MLPClassifier": tune_and_train_MLPClassifier,
+            "GaussianProcessClassifier": tune_and_train_GaussianProcessClassifier,
+            "RandomForestClassifier": tune_and_train_RandomForestClassifier,
         }
     elif args.test_set == "df_curated_biowin":
         classifiers = {
-            "MLPClassifier": tune_and_train_MLPClassifier,
-            "SVC": tune_and_train_SVC,
-            "RidgeClassifierCV": tune_and_train_RidgeClassifierCV,
-            "XGBClassifier": tune_and_train_XGBClassifier,
+            # "MLPClassifier": tune_and_train_MLPClassifier,
+            # "SVC": tune_and_train_SVC,
+            # "RidgeClassifierCV": tune_and_train_RidgeClassifierCV,
+            # "XGBClassifier": tune_and_train_XGBClassifier,
             "RidgeClassifier": tune_and_train_RidgeClassifier,
         }
 

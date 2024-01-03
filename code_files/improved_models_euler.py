@@ -6,8 +6,6 @@ import structlog
 import sys
 import os
 
-from tqdm import tqdm
-
 log = structlog.get_logger()
 from typing import List, Dict, Tuple
 import matplotlib.pyplot as plt
@@ -202,11 +200,11 @@ def tune_classifiers(
         n_jobs=args.njobs,
         return_train_score=True,
         refit=False,
-        optimizer_kwargs={"base_estimator": "GP"},  # optmizer parameters: use Gaussian Process (GP)
+        optimizer_kwargs={"base_estimator": "GP"},
         random_state=args.random_seed,
         verbose=0,
     )
-    overdone_control = DeltaYStopper(delta=0.0001)  # Stop if the gain of the optimization becomes too small
+    overdone_control = DeltaYStopper(delta=0.0001)
     time_limit_control = DeadlineStopper(total_time=60 * 60 * 4)
     best_params = report_perf_hyperparameter_tuning(
         opt,
@@ -527,7 +525,6 @@ def tune_and_train_PassiveAggressiveClassifier(df: pd.DataFrame, df_test: pd.Dat
 def tune_and_train_Perceptron(df: pd.DataFrame, df_test: pd.DataFrame):
     model = Perceptron
     search_spaces = {
-        # "penalty": Categorical(["l1", "l2", "elasticnet"]),
         "alpha": Real(0.00001, 0.001, "uniform"),
         "max_iter": Integer(800, 1200),
         "random_state": Categorical([args.random_seed]),
@@ -547,7 +544,6 @@ def tune_and_train_Perceptron(df: pd.DataFrame, df_test: pd.DataFrame):
 def tune_and_train_LogisticRegression(df: pd.DataFrame, df_test: pd.DataFrame):
     model = LogisticRegression
     search_spaces = {
-        # "penalty": Categorical(["l1", "l2", "elasticnet"]),
         "random_state": Categorical([args.random_seed]),
         "solver": Categorical(["lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"]),
         "max_iter": Integer(80, 120),
@@ -672,10 +668,10 @@ def run_classifiers_RDK(datasets: Dict[str, pd.DataFrame]) -> None:
     test_data = datasets[args.test_set]
     if args.test_set == "df_curated_scs":
         classifiers = {
-            # "MLPClassifier": tune_and_train_MLPClassifier,
-            # "LogisticRegressionCV": tune_and_train_LogisticRegressionCV,
-            # "PassiveAggressiveClassifier": tune_and_train_PassiveAggressiveClassifier,
-            # "Perceptron": tune_and_train_Perceptron,
+            "MLPClassifier": tune_and_train_MLPClassifier,
+            "LogisticRegressionCV": tune_and_train_LogisticRegressionCV,
+            "PassiveAggressiveClassifier": tune_and_train_PassiveAggressiveClassifier,
+            "Perceptron": tune_and_train_Perceptron,
             "LogisticRegression": tune_and_train_LogisticRegression,
         }
     elif args.test_set == "df_curated_biowin":
