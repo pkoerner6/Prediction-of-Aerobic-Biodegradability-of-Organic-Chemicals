@@ -893,14 +893,14 @@ def test_bit_vec_to_lst_of_lst(df_curated_class):
 
 
 def test_create_input_classification(class_df):
-    x = create_input_classification(df_class=class_df, include_speciation=False)
+    x, _ = create_input_classification(df_class=class_df, include_speciation=False, target_col="y_true")
     assert (list(np.unique(x[0]))) == [0, 1]
     assert type(x) == np.ndarray
     assert type(x[0]) == np.ndarray
     assert len(x[0]) == 167
 
     _, _, df_class = load_class_data_paper()
-    x = create_input_classification(df_class=df_class[:5], include_speciation=True)
+    x, _ = create_input_classification(df_class=df_class[:5], include_speciation=True, target_col="y_true")
     assert len(x[0]) == 185
 
 def test_convert_regression_df_to_input(regression_paper):

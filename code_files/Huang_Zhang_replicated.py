@@ -1,5 +1,3 @@
-""" Replication of the paper by Huang and Zhang """
-""" Requirements are in requirements_huang_zhang_replication.tex"""
 
 import argparse
 import pickle
@@ -79,7 +77,7 @@ def print_composition_of_dataframe(df: pd.DataFrame, inputs: List[str]) -> None:
 
 def info_dataset(df: pd.DataFrame, dataset_type: str, inchi_col_name: str) -> None:
     log.info("Number of datapoints in dataset", datapoints=len(df))
-    log.info("Unique CAS Numbers in dataset", unique_cas=df["cas"].nunique())
+    log.info("Unique CAS RN in dataset", unique_cas=df["cas"].nunique())
     log.info("Unique SMILES in dataset", unique_smiles=df["smiles"].nunique())
     df_correct_smiles = remove_smiles_with_incorrect_format(df=df, col_name_smiles="smiles")
     df_inchi = openbabel_convert(
@@ -138,8 +136,7 @@ def run_xgbclassifier_on_additional_echa_data(
             dataset_type="classification",
             inchi_col_name="inchi_from_smiles",
         )
-    print(df_additional.columns)
-    x_input = create_input_classification(df_additional, include_speciation=args.chemical_speciation_included)
+    x_input, _ = create_input_classification(df_additional, include_speciation=args.chemical_speciation_included, target_col="y_true")
     df_additional["prediction"] = model.predict(x_input)
     accuracy, f1, sensitivity, specificity = get_class_results(
         df_additional["y_true"].to_numpy(), df_additional["prediction"].to_numpy()
@@ -192,8 +189,7 @@ def train_classifier_on_all_data_and_test_on_additional(
     figure_title: str,
 ) -> None:
     model = XGBClassifier()
-    x = create_input_classification(df, include_speciation=args.chemical_speciation_included)
-    y = df["y_true"]
+    x, y = create_input_classification(df, include_speciation=args.chemical_speciation_included, target_col="y_true")
     x_balanced, y_balanced = get_balanced_data_adasyn(random_seed=random_seed, x=x, y=y)
     model.fit(x_balanced, y_balanced)
     run_xgbclassifier_on_additional_echa_data(
@@ -278,6 +274,7 @@ def run_classification() -> None:
             include_speciation=args.chemical_speciation_included,
             df_test=df_paper_class,
             dataset_name="df_classification_paper",
+            target_col="y_true",
         )
         log.info(" \n Newly trained classification model trained on all paper data, tested on additional data")
         train_classifier_on_all_data_and_test_on_additional(

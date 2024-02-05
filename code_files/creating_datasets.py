@@ -1,5 +1,3 @@
-"""File to create all dataframes that will be used in the improved_data.py and improved_data_analysis.py file"""
-"""Prior to this file, the data_processing.py file needs to be run"""
 
 import pandas as pd
 import structlog
@@ -43,10 +41,10 @@ def create_class_datasets(with_lunghini: bool, include_speciation: bool) -> None
     df_reg_curated_scs = load_regression_df_curated_scs_no_metal()
 
     log.info("\n Creating curated_scs")
-    curated_scs, curated_scs_removed = create_classification_data_based_on_regression_data(
+    curated_scs, _ = create_classification_data_based_on_regression_data(
         df_reg_curated_scs.copy(),
         with_lunghini=with_lunghini,
-        env_smiles_lunghini=True,
+        include_speciation_lunghini=True,
         include_speciation=False,
         prnt=args.prnt,
     )
@@ -59,7 +57,7 @@ def create_class_datasets(with_lunghini: bool, include_speciation: bool) -> None
     curated_scs_biowin, curated_scs_biowin_problematic = create_classification_biowin(
         reg_df=df_reg_curated_scs.copy(),
         with_lunghini=with_lunghini,
-        env_smiles_lunghini=True,
+        include_speciation_lunghini=True,
         prnt=args.prnt,
     )
     curated_scs_biowin.reset_index(inplace=True, drop=True)
@@ -69,7 +67,6 @@ def create_class_datasets(with_lunghini: bool, include_speciation: bool) -> None
     log.info("Entries in curated_biowin labeled as NRB", entries=len(curated_scs_biowin[curated_scs_biowin["y_true"]==0]))
 
     curated_scs.to_csv("datasets/curated_data/class_curated_scs.csv")
-    curated_scs_removed.to_csv("datasets/curated_data/class_curated_scs_removed.csv")
 
     curated_scs_biowin.to_csv("datasets/curated_data/class_curated_biowin.csv")
     curated_scs_biowin_problematic.to_csv("datasets/curated_data/class_curated_biowin_problematic.csv")
@@ -87,7 +84,7 @@ def create_curated_final() -> None:
 
     model_class = train_XGBClassifier_on_all_data(df=df_class, random_seed=args.random_seed, include_speciation=False)
 
-    x_removed = create_input_classification(df_problematic, include_speciation=False)
+    x_removed, _ = create_input_classification(df_problematic, include_speciation=False, target_col="y_true")
     df_problematic["prediction_class"] = model_class.predict(x_removed)
     df_problematic.to_csv("datasets/curated_data/class_curated_scs_biowin_problematic_predicted.csv")
 
@@ -113,8 +110,6 @@ def create_curated_final() -> None:
 
     df_curated_final.reset_index(inplace=True, drop=True) 
     df_curated_final.to_csv(f"datasets/curated_data/class_curated_final.csv")
-    class_biowin_removed = pd.read_csv("datasets/curated_data/class_curated_scs_removed.csv", index_col=0)
-    df_no_match = pd.concat([class_biowin_removed, df_no_match], axis=0)
     df_no_match.reset_index(inplace=True, drop=True) 
     df_no_match.to_csv(f"datasets/curated_data/class_curated_final_removed.csv")
 

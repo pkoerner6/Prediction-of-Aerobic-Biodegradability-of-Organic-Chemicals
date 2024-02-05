@@ -18,7 +18,6 @@ from rdkit import Chem
 from rdkit import RDLogger
 from rdkit.Chem import AllChem
 from rdkit.Chem.rdMolDescriptors import GetMACCSKeysFingerprint
-from pyADA import ApplicabilityDomain
 from pubchempy import get_compounds
 import urllib.request
 from selenium import webdriver
@@ -49,6 +48,7 @@ def openbabel_convert(df: pd.DataFrame, input_type: str, column_name_input: str,
     input_df = pd.DataFrame(np.array(lines), columns=[input_type])
     len_input_df = len(input_df)
     assert input_len == len_input_df
+
     process = subprocess.run(
         ["obabel", f"-i{input_type}", "input.txt", f"-o{output_type}"],
         stdout=subprocess.PIPE,
@@ -65,6 +65,8 @@ def remove_smiles_with_incorrect_format(df: pd.DataFrame, col_name_smiles: str) 
     df_clean = df.copy()
     df_clean[col_name_smiles] = df_clean[col_name_smiles].apply(lambda x: "nan" if "*" in x or "|" in x else x)
     df_clean = df_clean[df_clean[col_name_smiles] != "nan"]
+    invalid_smiles = ["[O-]C(=O)C1=CC=CC=C2", "[O-]C(=O)C1=CC=CC=C3", "c1cccc1"] # Invalid SMILES string: 2 unmatched ring bonds; last smiles is not convertable to mol
+    df_clean = df_clean[~df_clean[col_name_smiles].isin(invalid_smiles)]
     df_clean.reset_index(inplace=True, drop=True)
     return df_clean
 
@@ -705,8 +707,9 @@ def process_df_biowin(
 def replace_smiles_with_smiles_with_chemical_speciation(df_without_env_smiles: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     df_checked = pd.read_excel("datasets/chemical_speciation.xlsx", index_col=0)
 
+    df_correct_smiles = remove_smiles_with_incorrect_format(df=df_without_env_smiles, col_name_smiles="smiles")
     df_without_env_smiles = openbabel_convert(
-        df=df_without_env_smiles,
+        df=df_correct_smiles,
         input_type="smiles",
         column_name_input="smiles",
         output_type="inchi",
@@ -736,12 +739,13 @@ def replace_smiles_with_smiles_with_chemical_speciation(df_without_env_smiles: p
         df_without_env_smiles["smiles"] == "delete"
     ]
     df_removed_no_main_component = df_removed[df_removed["reason"]=="no main component at pH 7.4"]
-    df_removed_mixture = df_removed[(df_removed["reason"]=="mixture") | (df_removed["reason"]=="?")]
+    df_removed_mixture = df_removed[(df_removed["reason"]=="mixture")]
     log.info("Deleted because no main component at pH 7.4: ", no_main_component=df_removed_no_main_component.inchi_from_smiles.nunique())
     log.info("Deleted because mixture: ", mixture=df_removed_mixture.inchi_from_smiles.nunique())
     df_with_env_smiles = df_without_env_smiles[df_without_env_smiles["smiles"] != "delete"].copy()
     
     df_correct_smiles = remove_smiles_with_incorrect_format(df=df_with_env_smiles, col_name_smiles="smiles")
+
     df_with_env_smiles = openbabel_convert(
         df=df_correct_smiles,
         input_type="smiles",
@@ -851,7 +855,7 @@ def format_class_data_paper(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_class_data_paper(
-    load_new=False,
+    load_new=False, # Set to True when running for the first time
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     if load_new:
         xlsx = pd.ExcelFile("datasets/external_data/Data_huang_zhang.xlsx")
@@ -1067,7 +1071,7 @@ def create_classification_data_based_on_regression_data(
 
     if with_lunghini:
         df_lunghini_additional = get_external_dataset_lunghini(
-            run_from_start=False, # TODO
+            run_from_start=False, # Needs to be set to True when running for the first time
             class_df=df_class,
             include_speciation_lunghini=include_speciation_lunghini,
         )
@@ -1178,14 +1182,6 @@ def bit_vec_to_lst_of_lst(df: pd.DataFrame, include_speciation: bool):
     return x_class
 
 
-def create_input_classification(df_class: pd.DataFrame, include_speciation: bool) -> np.ndarray:
-    """Function to create fingerprints and put fps into one array that can than be used as one feature for model training."""
-    df = convert_to_maccs_fingerprints(df_class)
-    x_class = bit_vec_to_lst_of_lst(df, include_speciation)
-    x_array = np.array(x_class, dtype=object)
-    return x_array
-
-
 def convert_to_morgan_fingerprints(df: pd.DataFrame) -> pd.DataFrame:
     # 1024 bit fingerprint
     df = df.copy()
@@ -1197,6 +1193,12 @@ def convert_to_maccs_fingerprints(df: pd.DataFrame) -> pd.DataFrame:
     # 166 bit fingerprint
     df = df.copy()
     mols = [AllChem.MolFromSmiles(smiles) for smiles in df["smiles"]]
+    for index, value in enumerate(mols): 
+        if value is None:
+            log.warn("This SMILES could not be converted to Mol file, deleting this datapoint", problematic_smiles=df.loc[index, "smiles"])
+            df.drop(index, inplace=True)
+            df.reset_index(drop=True, inplace=True)
+            del mols[index]
     df["fingerprint"] = [GetMACCSKeysFingerprint(mol) for mol in mols]
     return df
 
@@ -1207,6 +1209,14 @@ def convert_to_rdk_fingerprints(df: pd.DataFrame) -> pd.DataFrame:
     df["fingerprint"] = [Chem.RDKFingerprint(mol) for mol in mols]
     return df
 
+
+def create_input_classification(df_class: pd.DataFrame, include_speciation: bool, target_col: str) -> Tuple[np.ndarray, pd.Series]:
+    """Function to create fingerprints and put fps into one array that can than be used as one feature for model training."""
+    df = convert_to_maccs_fingerprints(df_class)
+    x_class = bit_vec_to_lst_of_lst(df, include_speciation)
+    x_array = np.array(x_class, dtype=object)
+    y = df[target_col]
+    return x_array, y
 
 
 def get_speciation_col_names() -> List[str]:

@@ -1,5 +1,3 @@
-"""Analysis of the datasets resulting models when datapoints are removed based on BIOWIN5 and BIOWIN6"""
-"""Prior to this file, the files data_processing.py and creating_datasets.py need to be run"""
 
 import pandas as pd
 import numpy as np
@@ -12,7 +10,6 @@ from collections import defaultdict
 from rdkit import Chem
 from rdkit.Chem.Descriptors import ExactMolWt
 from rdkit.Chem import AllChem
-import rdkit
 import sys
 import os
 import argparse
@@ -33,7 +30,6 @@ parser.add_argument(
 args = parser.parse_args()
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from code_files.processing_functions import convert_regression_df_to_input
 from code_files.processing_functions import create_dfs_for_curated_data_analysis
 
 
@@ -43,17 +39,17 @@ def plot_bar_dataset_analysis(
     x = np.arange(len(dfname_to_groupamount["curated_scs"]))
     width = 0.2
     plt.figure(figsize=(12, 6))
-    plt.bar(x - 0.2, dfname_to_groupamount["curated_scs"], width, color="mediumturquoise")
-    plt.bar(x + 0.0, dfname_to_groupamount["curated_biowin"], width, color="royalblue")
-    plt.bar(x + 0.2, dfname_to_groupamount["curated_final"], width, color="mediumseagreen")
-    plt.xticks(x, bin_names, fontsize=16)
+    plt.bar(x - 0.2, dfname_to_groupamount["curated_scs"], width, color="royalblue")
+    plt.bar(x + 0.0, dfname_to_groupamount["curated_biowin"], width, color="lightgreen")
+    plt.bar(x + 0.2, dfname_to_groupamount["curated_final"], width, color="seagreen")
+    plt.xticks(x, bin_names, fontsize=18)
     if "percent" in saving_name:
         plt.ylim(0, 145)
-        plt.yticks(np.arange(0, 101, step=20), fontsize=16)
+        plt.yticks(np.arange(0, 101, step=20), fontsize=18)
     else:
-        plt.yticks(fontsize=16)
-    plt.xlabel(xlabel, fontsize=18)
-    plt.ylabel(ylabel, fontsize=18)
+        plt.yticks(fontsize=18)
+    plt.xlabel(xlabel, fontsize=22)
+    plt.ylabel(ylabel, fontsize=22)
     plt.legend(
         [
             "$\mathregular{Curated_{SCS}}$",
@@ -133,11 +129,11 @@ def analyse_distribution(
                 curated_scs="{:.1f}".format(
                     (dfname_to_groupamount["curated_scs"][i] / dfname_to_groupamount["curated_scs"][i]) * 100
                 ),
-                improved_biowin_both="{:.1f}".format(
+                curated_biowin="{:.1f}".format(
                     (dfname_to_groupamount["curated_biowin"][i] / dfname_to_groupamount["curated_scs"][i])
                     * 100
                 ),
-                improved_biowin_both_readded="{:.1f}".format(
+                curated_final="{:.1f}".format(
                     (
                         dfname_to_groupamount["curated_final"][i]
                         / dfname_to_groupamount["curated_scs"][i]
@@ -222,10 +218,10 @@ def analyse_distribution_of_substances(dfnames_to_dfs: pd.DataFrame) -> None:
             curated_scs="{:.1f}".format(
                 (df_occurences_all["curated_scs"][c] / df_occurences_all["curated_scs"][c]) * 100
             ),
-            improved_biowin_both="{:.1f}".format(
+            curated_biowin="{:.1f}".format(
                 (df_occurences_all["curated_biowin"][c] / df_occurences_all["curated_scs"][c]) * 100
             ),
-            improved_biowin_both_readded="{:.1f}".format(
+            curated_final="{:.1f}".format(
                 (df_occurences_all["curated_final"][c] / df_occurences_all["curated_scs"][c]) * 100
             ),
         )
@@ -235,9 +231,9 @@ def analyse_distribution_of_substances(dfnames_to_dfs: pd.DataFrame) -> None:
         figsize=(13, 6),
         rot=0,
         color=[
-            "mediumturquoise",
             "royalblue",
-            "mediumseagreen",
+            "lightgreen",
+            "seagreen",
         ],
     )
     plt.xlabel("entries per substance", fontsize=18)
@@ -328,9 +324,9 @@ def analyse_occurence_of_halogens(dfnames_to_dfs: pd.DataFrame) -> None:
         figsize=(8, 6),
         rot=0,
         color=[
-            "mediumturquoise",
             "royalblue",
-            "mediumseagreen",
+            "lightgreen",
+            "seagreen",
         ],
         fontsize=18,
     )
@@ -359,9 +355,9 @@ def analyse_occurence_of_halogens(dfnames_to_dfs: pd.DataFrame) -> None:
         figsize=(10, 6),
         rot=0,
         color=[
-            "mediumturquoise",
             "royalblue",
-            "mediumseagreen",
+            "lightgreen",
+            "seagreen",
         ],
         fontsize=18,
     )

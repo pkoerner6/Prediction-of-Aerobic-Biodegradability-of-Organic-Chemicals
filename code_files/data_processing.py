@@ -1,5 +1,3 @@
-""" Data improvement by adding the correct SMILES """
-""" Requirements are in requirements_master_thesis_env.tex"""
 
 import sys
 import os
@@ -152,7 +150,7 @@ def get_problematic_studies_echa() -> pd.DataFrame:
         ]
     ].rename(columns={"biodegradation_samplingtime": "time_day"})
     log.info(
-        "Total number of studies for which inventory number or CASRN don't match reference substance (ECHA)",
+        "Total number of studies for which inventory number or CAS RN don't match reference substance (ECHA)",
         problematic_studies=len(df_problematic),
     )
     return df_problematic
@@ -187,7 +185,7 @@ def remove_studies_where_registered_substance_dont_match_reference_substance(
 
     df_a_full["to_remove"] = df_a_full.apply(remove_problematic_studies, axis=1)
     df_removed_studies = df_a_full[df_a_full["to_remove"] == True].copy()
-    log.info("Removed studies in df_a because reference CAS didn't match CAS", removed=len(df_removed_studies), removed_substances=df_removed_studies.cas.nunique())
+    log.info("Removed studies in df_a because reference CAS RN didn't match CAS RN", removed=len(df_removed_studies), removed_substances=df_removed_studies.cas.nunique())
     df_a_full_clean = df_a_full[df_a_full["to_remove"] == False].copy()
     log.info(
         "Entries in df_a_full_clean without problematic studies",
@@ -296,7 +294,7 @@ def process_multiple_component_data(
         "NO SMILES found yet (after PubChem and Comptox)": df_multiple_components_smiles_not_found,
     }
     for text, df in text_to_df.items():
-        log.info(f"CAS for which {text}", entries=len(df))
+        log.info(f"CAS RN for which {text}", entries=len(df))
 
     assert len(df_multiple) == len(df_multiple_components_smiles_found) + len(df_multiple_components_smiles_not_found)
     return df_multiple_components_smiles_found, df_multiple_components_smiles_not_found
@@ -399,7 +397,7 @@ def process_multiple_components_smiles_not_found(
     assert len(df_smiles_found) + len(df_smiles_not_found) == len(df)
 
     text_to_df = {
-        "CAS for which InChI main layer from PubChem and Comptox match": df_match_inchi_main_layer_pubchem_comptox,
+        "CAS RN for which InChI main layer from PubChem and Comptox match": df_match_inchi_main_layer_pubchem_comptox,
         "Entries for which SMILES only in comptox found and this matches with paper": df_comptox_paper_match,
         "Entries for which SMILES only in pubchem found and this matches with cirpy": df_pubchem_cirpy_match,
     }
@@ -488,8 +486,8 @@ def load_datasets() -> Tuple[
         df_unique_cas=df_unique_cas, df_checked=df_checked, df_reg=df_reg
     )
     df_name_to_df = {
-        "df_a (unique CASRN checked by Gluege)": df_a,
-        "df_b (unique CASRN NOT checked by Gluege)": df_b,
+        "df_a (unique CAS RN checked by Gluege)": df_a,
+        "df_b (unique CAS RN NOT checked by Gluege)": df_b,
         "df_a_full (datapoints checked by Gluege)": df_a_full_original,
         "df_b_full (datapoints NOT checked by Gluege)": df_b_full_original,
     }
@@ -586,7 +584,7 @@ def process_full_dataset(
     df_full = pd.concat([df_a_full, df_b_found_full])
     log.info("Entries in df_full", df_full=len(df_full))
 
-    log.info("Replacing multiple CAS for one InChI")
+    log.info("Replacing multiple CAS RN for one InChI")
     df_full = replace_multiple_cas_for_one_inchi(df_full, prnt=False)
 
     df_full_with_chemical_speciation, _ = replace_smiles_with_smiles_with_chemical_speciation(df_full.copy())

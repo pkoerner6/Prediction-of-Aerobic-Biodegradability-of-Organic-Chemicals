@@ -42,10 +42,10 @@ def get_class_results(true: np.ndarray, pred: np.ndarray) -> Tuple[float, float,
 
 
 def print_class_results(accuracy: float, sensitivity: float, specificity: float, f1: float) -> float:
-    log.info("Accuracy score", accuracy="{:.1f}".format(accuracy * 100))
+    log.info("Balanced accuracy", accuracy="{:.1f}".format(accuracy * 100))
     log.info("Sensitivity", sensitivity="{:.1f}".format(sensitivity * 100))
     log.info("Specificity", specificity="{:.1f}".format(specificity * 100))
-    log.info("F1", f1="{:.1f}".format(f1 * 100))
+    log.info("F1", f1="{:.2f}".format(f1))
     return accuracy
 
 
@@ -72,8 +72,8 @@ def split_classification_df_with_fixed_test_set(
                 column_name_input="smiles",
                 output_type="inchi",
             )
-    df = dfs[0][cols + ["inchi_from_smiles", "y_true"]]
-    df_test = dfs[1][cols + ["inchi_from_smiles", "y_true"]]
+    df = dfs[0][cols + ["inchi_from_smiles"]]
+    df_test = dfs[1][cols + ["inchi_from_smiles"]]
 
     skf = StratifiedKFold(n_splits=nsplits, shuffle=True, random_state=random_seed)
     for _, test_index in skf.split(df_test[cols + ["inchi_from_smiles"]], df_test["y_true"]):
@@ -88,7 +88,6 @@ def split_classification_df_with_fixed_test_set(
             train_set = train_set[~(train_set["smiles"].isin(test_checked["env_smiles"]))]
             train_set = train_set.loc[~((train_set["cas"].isin(test_checked["cas"])) & (test_checked["cas"].notna())), :]
             train_set = train_set.loc[~((train_set["cas"].isin(df_test_set["cas"])) & (df_test_set["cas"].notna())), :]
-        # log.info("Test sizes: ", test_set=len(df_test_set), deleted=len(df)-len(train_set)) # TODO
         train_sets.append(train_set)
         test_sets.append(df_test_set)
 
@@ -103,6 +102,7 @@ def skf_class_fixed_testset(
     include_speciation: bool,
     cols: List[str],
     paper: bool,
+    target_col: str,
 ) -> Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray], List[np.ndarray], List[pd.DataFrame], List[int]]:
     train_sets, test_sets = split_classification_df_with_fixed_test_set(
         df=df,
@@ -121,11 +121,13 @@ def skf_class_fixed_testset(
 
     for split in range(nsplits):
         x_train_fold = train_sets[split][cols]
-        x_train_fold_lst.append(create_input_classification(x_train_fold, include_speciation=include_speciation))
-        y_train_fold_lst.append(train_sets[split]["y_true"])
+        x, y = create_input_classification(x_train_fold, include_speciation=include_speciation, target_col=target_col)
+        x_train_fold_lst.append(x)
+        y_train_fold_lst.append(y)
         x_test_fold = test_sets[split][cols]
-        x_test_fold_lst.append(create_input_classification(x_test_fold, include_speciation=include_speciation))
-        y_test_fold_lst.append(test_sets[split]["y_true"])
+        x, y = create_input_classification(x_test_fold, include_speciation=include_speciation, target_col=target_col)
+        x_test_fold_lst.append(x)
+        y_test_fold_lst.append(y)
         df_test = test_sets[split].copy()
         df_test_lst.append(df_test)
         test_set_sizes.append(len(df_test))
@@ -199,12 +201,13 @@ def skf_classification(
     include_speciation: bool,
     df_test: pd.DataFrame,
     dataset_name: str,
+    target_col: str,
     model,
 ) -> Tuple[List[float], List[float], List[float], List[float]]:
 
     df.reset_index(inplace=True, drop=True)
 
-    cols = ["cas", "smiles"]
+    cols = ["cas", "smiles", "y_true"]
     if include_speciation:
         cols += get_speciation_col_names()
 
@@ -224,6 +227,7 @@ def skf_classification(
         include_speciation=include_speciation,
         cols=cols,
         paper=paper,
+        target_col=target_col,
     )
 
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = run_balancing_and_training(
@@ -238,24 +242,28 @@ def skf_classification(
         model=model,
     )
 
-    metrics = ["accuracy", "sensitivity", "specificity", "f1"]
+    metrics = ["accuracy", "sensitivity", "specificity"]
     metrics_values = [
         lst_accu,
         lst_sensitivity,
         lst_specificity,
-        lst_f1,
     ]
     for metric, metric_values in zip(metrics, metrics_values):
         log.info(
             f"{metric}: ",
             score="{:.1f}".format(np.mean(metric_values) * 100) + " ± " + "{:.1f}".format(np.std(metric_values) * 100),
         )
+    log.info(
+        f"F1: ",
+        score="{:.2f}".format(np.mean(lst_f1)) + " ± " + "{:.2f}".format(np.std(lst_f1)),
+    )
     return (
         lst_accu,
         lst_sensitivity,
         lst_specificity,
         lst_f1,
     )
+    
 
 
 def split_regression_df_with_grouping(
@@ -516,6 +524,7 @@ def train_XGBClassifier(
     include_speciation: bool,
     df_test: pd.DataFrame,
     dataset_name: str,
+    target_col: str,
 ) -> Tuple[List[float], List[float], List[float], List[float]]:
 
     accu, sensitivity, specificity, f1 = skf_classification(
@@ -526,12 +535,13 @@ def train_XGBClassifier(
         include_speciation=include_speciation,
         df_test=df_test,
         dataset_name=dataset_name,
+        target_col=target_col,
         model=XGBClassifier(),  # Default parameters as in paper
     )
-    log.info("Accuracy: ", accuracy=accu)
-    log.info("Sensitivity: ", sensitivity=sensitivity)
-    log.info("Specificity: ", specificity=specificity)
-    log.info("F1: ", f1=f1)
+    log.info("Balanced accuracy", accuracy=accu)
+    log.info("Sensitivity", sensitivity=sensitivity)
+    log.info("Specificity", specificity=specificity)
+    log.info("F1", f1=f1)
     return accu, f1, sensitivity, specificity
 
 
@@ -541,79 +551,13 @@ def train_XGBClassifier_on_all_data(
     include_speciation: bool,
 ) -> XGBClassifier:
 
-    x = create_input_classification(df, include_speciation=include_speciation)
-    y = df["y_true"]
+    x, y = create_input_classification(df, include_speciation=include_speciation, target_col="y_true")
     x, y = get_balanced_data_adasyn(random_seed=random_seed, x=x, y=y)
 
     model_class = XGBClassifier()
     model_class.fit(x, y)
 
     return model_class
-
-
-# def tune_and_train_LGBMClassifier( # TODO
-#     df: pd.DataFrame,
-#     random_seed: int,
-#     nsplits: int,
-#     include_speciation: bool,
-#     df_test: pd.DataFrame,
-#     dataset_name: str,
-#     n_jobs: int,
-# ) -> Tuple[List[float], List[float], List[float], List[float]]:
-#     model = lgbm.LGBMClassifier
-#     search_spaces = {
-#         "boosting_type": Categorical(["gbdt"]),
-#         "learning_rate": Real(0.001, 0.1, "uniform"),
-#         "max_depth": Categorical([-1]),
-#         "n_estimators": Integer(100, 1600),
-#         "num_leaves": Integer(100, 1000),
-#         "objective": Categorical(["binary"]),
-#     }
-
-#     accu, f1, sensitivity, specificity = tune_and_train_classifiers(
-#         df=df,
-#         random_seed=random_seed,
-#         nsplits=nsplits,
-#         search_spaces=search_spaces,
-#         include_speciation=include_speciation,
-#         df_test=df_test,
-#         dataset_name=dataset_name,
-#         n_jobs=n_jobs,
-#         model=model,
-#     )
-#     return accu, f1, sensitivity, specificity
-
-
-# def tune_and_train_BaggingClassifier( # TODO
-#     df: pd.DataFrame,
-#     random_seed: int,
-#     nsplits: int,
-#     include_speciation: bool,
-#     df_test: pd.DataFrame,
-#     dataset_name: str,
-#     n_jobs: int,
-# ) -> Tuple[List[float], List[float], List[float], List[float]]:
-#     model = BaggingClassifier
-#     search_spaces = {
-#         "max_features": Integer(1, 164),
-#         "max_samples": Integer(5, 3000),
-#         "n_estimators": Integer(200, 3000),
-#         "n_jobs": Categorical([-1]),
-#         "random_state": Categorical([random_seed]),
-#     }
-
-#     accu, f1, sensitivity, specificity = tune_and_train_classifiers(
-#         df=df,
-#         random_seed=random_seed,
-#         nsplits=nsplits,
-#         search_spaces=search_spaces,
-#         include_speciation=include_speciation,
-#         df_test=df_test,
-#         dataset_name=dataset_name,
-#         n_jobs=n_jobs,
-#         model=model,
-#     )
-#     return accu, f1, sensitivity, specificity
 
 
 def plot_regression_error(

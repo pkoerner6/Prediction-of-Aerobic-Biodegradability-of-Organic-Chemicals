@@ -1,16 +1,10 @@
-"""XGBoost models with hyperparameters from HUang and Zhang will be trained on different improved datasets"""
-"""Prior to this file, the files data_processing.py and creating_datasets.py need to be run"""
 
-import pandas as pd
 import numpy as np
 import structlog
 from typing import List, Tuple
-import matplotlib.pyplot as plt
 import sys
 import os
 import argparse
-from sklearn.model_selection import StratifiedKFold
-from xgboost import XGBClassifier
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from code_files.processing_functions import get_class_datasets
@@ -32,12 +26,6 @@ parser.add_argument(
     "--random_seed",
     type=int,
     default=42,
-)
-parser.add_argument(
-    "--train_new",
-    default=False,
-    action=argparse.BooleanOptionalAction,
-    help="Whether to train the models again or use previous results to just plot",
 )
 parser.add_argument(
     "--test_set",
@@ -72,6 +60,7 @@ def train_classification_models(
             include_speciation=False,
             df_test=df_test,
             dataset_name=dataset_name,
+            target_col="y_true",
         )
         accuracy[indx] = np.asarray(lst_accu_paper)
         f1[indx] = np.asarray(lst_f1_paper)

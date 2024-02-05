@@ -1,5 +1,5 @@
-"""Needs to be run with venv 'molformer_venv'"""
 
+import numpy as np
 import pandas as pd
 import argparse
 import torch
@@ -15,14 +15,6 @@ import os
 
 from fast_transformers.masking import LengthMask as LM
 from xgboost import XGBClassifier
-
-import numpy as np
-import pandas as pd
-from typing import Dict, List, Tuple
-from tqdm import tqdm
-tqdm.pandas()
-
-from rdkit import Chem
 
 tqdm.pandas()
 
@@ -146,7 +138,7 @@ def skf_class_fixed_testset_other_features(
     paper: bool,
 ) -> Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray], List[np.ndarray], List[pd.DataFrame], List[int]]:
 
-    cols=["cas", "smiles"]
+    cols=["cas", "smiles", "y_true"]
 
     train_sets, test_sets = split_classification_df_with_fixed_test_set(
         df=df,
@@ -211,18 +203,21 @@ def train_XGBClassifier_other_features(
     )
 
 
-    metrics = ["balanced accuracy", "sensitivity", "specificity", "f1"]
+    metrics = ["balanced accuracy", "sensitivity", "specificity"]
     metrics_values = [
         lst_accu,
         lst_sensitivity,
         lst_specificity,
-        lst_f1,
     ]
     for metric, metric_values in zip(metrics, metrics_values):
         log.info(
             f"{metric} for {feature_type}: ",
             score="{:.1f}".format(np.mean(metric_values) * 100) + " ± " + "{:.1f}".format(np.std(metric_values) * 100),
         )
+    log.info(
+        f"F1 for {feature_type}: ",
+        score="{:.2f}".format(np.mean(lst_f1)) + " ± " + "{:.2f}".format(np.std(lst_f1)),
+    )
     return (
         lst_accu,
         lst_sensitivity,
