@@ -351,12 +351,26 @@ def check_how_much_of_dsstox_in_ad_class():
     df_dsstox = get_dsstox()
     log.info("\n Check if DSStox sets in AD of Readded classification")
     df_curated_scs, df_curated_biowin, df_curated_final = get_datasets()
+    df_dsstox1 = df_dsstox[:400000]
+    df_dsstox2 = df_dsstox[400000:]
+    
     log.info(f"\n                 Checking if entries of DSStox in AD of df_curated_scs")
-    check_external_test_in_ad(df_train=df_curated_scs, df_test=df_dsstox)
+    log.info(f"\n Part 1")
+    check_external_test_in_ad(df_train=df_curated_scs, df_test=df_dsstox1)
+    log.info(f"\n Part 2")
+    check_external_test_in_ad(df_train=df_curated_scs, df_test=df_dsstox2)
+
     log.info(f"\n                 Checking if entries of DSStox in AD of df_curated_biowin")
-    check_external_test_in_ad(df_train=df_curated_biowin, df_test=df_dsstox)
+    log.info(f"\n Part 1")
+    check_external_test_in_ad(df_train=df_curated_biowin, df_test=df_dsstox1)
+    log.info(f"\n Part 2")
+    check_external_test_in_ad(df_train=df_curated_biowin, df_test=df_dsstox2)
+
     log.info(f"\n                 Checking if entries of DSStox in AD of df_curated_final")
-    check_external_test_in_ad(df_train=df_curated_final, df_test=df_dsstox)
+    log.info(f"\n Part 1")
+    check_external_test_in_ad(df_train=df_curated_final, df_test=df_dsstox1)
+    log.info(f"\n Part 2")
+    check_external_test_in_ad(df_train=df_curated_final, df_test=df_dsstox2)
 
 
 if __name__ == "__main__":
