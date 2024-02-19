@@ -48,8 +48,8 @@ parser.add_argument(
 parser.add_argument(
     "--feature_type",
     type=str,
-    default="Molformer",
-    choices=["MACCS", "RDK", "Morgan", "Molformer"],
+    default="MolFormer",
+    choices=["MACCS", "RDK", "Morgan", "MolFormer"],
     help="How to generate the features",
 )
 parser.add_argument(
@@ -123,7 +123,7 @@ def create_input_classification_other_features(df: pd.DataFrame, feature_type="M
     elif feature_type=="Morgan":
         df = convert_to_morgan_fingerprints(df)
         x_class = bit_vec_to_lst_of_lst(df, include_speciation=False)
-    elif feature_type=="Molformer":
+    elif feature_type=="MolFormer":
         tokenizer, lm = load_checkpoint()
         df = create_features_molformer(df, tokenizer, lm)
         x_class = bit_vec_to_lst_of_lst(df, include_speciation=False)
