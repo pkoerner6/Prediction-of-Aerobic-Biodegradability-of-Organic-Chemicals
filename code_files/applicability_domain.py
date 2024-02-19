@@ -1,4 +1,5 @@
 
+from py_compile import PycInvalidationMode
 import numpy as np
 import pandas as pd
 import structlog
@@ -8,7 +9,6 @@ import statistics
 from collections import defaultdict
 from sklearn.model_selection import StratifiedKFold
 from xgboost import XGBClassifier
-from pyADA import ApplicabilityDomain
 from rdkit.Chem import AllChem
 from rdkit.Chem.rdMolDescriptors import GetMACCSKeysFingerprint
 
@@ -18,6 +18,210 @@ from typing import List, Dict, Tuple
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from code_files.processing_functions import load_class_data_paper
+
+
+######################################################
+# Adapted from pyADA https://github.com/jeffrichardchemistry/pyADA/blob/main/pyADA/pyADA.py
+
+from math import sqrt
+from tqdm import tqdm
+from sklearn.metrics import roc_curve, auc, accuracy_score
+
+class Smetrics:
+    def __init__(self):
+        self.maxdata = None
+        self.mindata = None
+    
+    def mean_absolute_error(self, y_true, y_pred):
+        y_true = np.array(y_true)
+        y_pred = np.array(y_pred)
+        return sum( (np.absolute(y_true - y_pred)) / (len(y_true)) )
+    
+    def mean_square_error(self, y_true, y_pred):
+        y_true = np.array(y_true)
+        y_pred = np.array(y_pred)
+        return sum( (y_true - y_pred)**2 ) / len(y_true)
+    
+    def roots_mean_square_error(self, y_true, y_pred):
+        return sqrt(Smetrics.mean_square_error(self, y_true=y_true, y_pred=y_pred))
+    
+
+
+class Similarity:
+    """
+        All similarity calculations have a range of [0, 1]
+    """
+    def __init__(self):        
+        pass    
+    
+    def __coefs(self, vector1, vector2):
+        A = np.array(vector1).astype(int)
+        B = np.array(vector2).astype(int)
+
+        AnB = A & B #intersection
+        onlyA = np.array(B) < np.array(A) #A is a subset of B
+        onlyB = np.array(A) < np.array(B) #B is a subset of A
+        AuB_0s = A | B #Union (for count de remain zeros)
+        return AnB,onlyA,onlyB,np.count_nonzero(AuB_0s==0)
+    
+
+    def tanimoto_similarity(self, vector1, vector2):
+        """
+        Structural similarity calculation based on tanimoto index. T(A,B) = (A ^ B)/(A + B - A^B)
+        """
+        AnB, onlyA, onlyB, _ = Similarity.__coefs(self, vector1=vector1, vector2=vector2)
+        return AnB.sum() / (onlyA.sum() + onlyB.sum() + AnB.sum())
+
+
+    def euclidian_similarity(self, vector1, vector2):
+        AnB, onlyA, onlyB, AuB_0s = Similarity.__coefs(self, vector1=vector1, vector2=vector2)
+        return sqrt( (AnB.sum()  + AuB_0s ) / (onlyA.sum()  + onlyB.sum()  + AnB.sum() + AuB_0s) )
+   
+
+    def manhattan_similarity(self, vector1, vector2):
+        AnB, onlyA, onlyB, AuB_0s = Similarity.__coefs(self, vector1=vector1, vector2=vector2)
+        return (onlyA.sum() + onlyB.sum()) / (onlyA.sum() + onlyB.sum() + AnB.sum() + AuB_0s)
+
+
+class ApplicabilityDomain:
+    def __init__(self, verbose=False):
+        self.__sims = Similarity()    
+        self.__smetrics = Smetrics()
+        self.__verbose=verbose
+        self.similarities_table_ = None
+                
+    def analyze_similarity(self, base_test, base_train, similarity_metric='tanimoto'):
+        """
+        Analysis of the similarity between molecular fingerprints
+        using different metrics. A table (dataframe pandas) will be
+        generated with the coefficients: Average, median, std,
+        maximum similarity and minimum similarity, for all compounds
+        in the test database in relation to the training database.
+        The alpha and beta parameters are only for 'tversky' metric.
+        """
+
+        similarities = {}
+
+        # get dictionary of all data tests similarities
+        def get_dict(base_train, i_test, similarities, n):
+            get_tests_similarities = [0]*len(base_train)
+            for i, i_train in enumerate(base_train):
+                if similarity_metric == 'tanimoto':
+                    get_tests_similarities[i] = (self.__sims.tanimoto_similarity(i_test, i_train))
+                elif similarity_metric == 'manhattan':
+                    get_tests_similarities[i] = (self.__sims.manhattan_similarity(i_test, i_train))
+                elif similarity_metric == 'euclidian':
+                    get_tests_similarities[i] = (self.__sims.euclidian_similarity(i_test, i_train))                    
+                else:
+                    get_tests_similarities[i] = (self.__sims.tanimoto_similarity(i_test, i_train))
+            similarities['Sample_test_{}'.format(n)] = np.array(get_tests_similarities)
+            return similarities
+        
+        if self.__verbose:
+            with tqdm(total=len(base_test)) as progbar:
+                for n,i_test in enumerate(base_test):
+                    similarities = get_dict(base_train, i_test, similarities, n)
+                    progbar.update(1)
+        else:
+            for n,i_test in enumerate(base_test):            
+                similarities = get_dict(base_train, i_test, similarities, n)
+                    
+        self.similarities_table_ = pd.DataFrame(similarities)
+        
+        analyze = pd.concat([self.similarities_table_.mean(),
+                             self.similarities_table_.median(),
+                             self.similarities_table_.std(),
+                             self.similarities_table_.max(),
+                             self.similarities_table_.min()],
+                             axis=1)        
+        analyze.columns = ['Mean', 'Median', 'Std', 'Max', 'Min']
+        
+        return analyze
+            
+    
+    def fit(self, model, base_test, base_train, y_true, isTensorflow=False,
+            threshold_reference = 'max', threshold_step = (0, 1, 0.05),
+            similarity_metric='tanimoto', alpha = 1, beta = 1, metric_avaliation='rmse'):
+        
+        #reference parameters
+        if threshold_reference.lower() == 'max':
+            thref = 'Max'
+        elif threshold_reference.lower() == 'average':
+            thref = 'Mean'
+        elif threshold_reference.lower() == 'std':
+            thref = 'Std'
+        elif threshold_reference.lower() == 'median':
+            thref = 'Median'
+        else:
+            thref = 'Max'
+        
+        #Get analysis table
+        table_analysis = ApplicabilityDomain.analyze_similarity(self, base_test=base_test, base_train=base_train,
+                                                            similarity_metric=similarity_metric,
+                                                            alpha=alpha, beta=beta)
+        table_analysis.index = np.arange(0, len(table_analysis), 1)
+        
+        results = {}
+        total_thresholds = np.arange(threshold_step[0], threshold_step[1], threshold_step[2])
+        
+        def get_table(thresholds, table_analysis, thref, samples_GT_threshold, base_test, isTensorflow, model, y_true, metric_avaliation, results):
+            samples_LT_threshold = table_analysis.loc[table_analysis[thref] < thresholds] #get just samples < threshold
+            new_xitest = base_test[samples_GT_threshold.index, :] #get samples > threshold in complete base_test
+            if isTensorflow:
+                new_ypred = model.predict(new_xitest) #precit y_pred
+                new_ypred[new_ypred <= 0.5] = 0
+                new_ypred[new_ypred > 0.5] = 1
+                new_ypred = new_ypred.astype(int)
+            else:
+                new_ypred = model.predict(new_xitest) #precit y_pred
+            new_ytrue = y_true[samples_GT_threshold.index] #get y_true (same index of xi_test) (y_true must be a array 1D in this case)
+            
+            #calc of ERROR METRICS (EX: RMSE) or correlation methods
+            if metric_avaliation == 'rmse':
+                error_ = self.__smetrics.roots_mean_square_error(y_true=new_ytrue, y_pred=new_ypred)
+            elif metric_avaliation == 'mse':
+                error_ = self.__smetrics.mean_square_error(y_true=new_ytrue, y_pred=new_ypred)
+            elif metric_avaliation == 'mae':
+                error_ = self.__smetrics.mean_absolute_error(y_true=new_ytrue, y_pred=new_ypred)
+            elif metric_avaliation == 'acc':
+                error_ = accuracy_score(y_true=new_ytrue, y_pred=new_ypred)
+            elif metric_avaliation == 'auc':
+                if isTensorflow:
+                    new_yproba = model.predict(new_xitest)                        
+                    fp, tp, _ = roc_curve(new_ytrue, new_yproba)
+                    error_ = auc(fp, tp)
+                else:
+                    new_yproba = model.predict_proba(new_xitest)                        
+                    fp, tp, _ = roc_curve(new_ytrue, new_yproba[:, 1])
+                    error_ = auc(fp, tp)
+                
+            results['Threshold {}'.format(thresholds.round(5))] = [[error_],np.array(samples_LT_threshold.index)]
+            return results
+
+
+        if self.__verbose:
+            
+            for thresholds in tqdm(total_thresholds):
+                samples_GT_threshold = table_analysis.loc[table_analysis[thref] >= thresholds] #get just samples > threshold
+                if len(samples_GT_threshold) == 0:
+                    print('\nStopping with Threshold {}. All similarities are less than or equal {} '.format(thresholds, thresholds))
+                    break
+                results = get_table(thresholds, table_analysis, thref, samples_GT_threshold, base_test, isTensorflow, model, y_true, metric_avaliation, results)
+                
+            return results
+        
+        else:            
+            for thresholds in total_thresholds:
+                samples_GT_threshold = table_analysis.loc[table_analysis[thref] >= thresholds] #get just samples > threshold
+                if len(samples_GT_threshold) == 0:
+                    print('\nStopping with Threshold {}. All similarities are less than or equal {} '.format(thresholds, thresholds))
+                    break
+                results = get_table(thresholds, table_analysis, thref, samples_GT_threshold, base_test, isTensorflow, model, y_true, metric_avaliation, results)
+                
+            return results
+
+
+######################################################
 
 
 def get_datasets() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -120,6 +324,7 @@ def check_external_test_in_ad(df_train: pd.DataFrame, df_test: pd.DataFrame):
 
     AD = ApplicabilityDomain(verbose=True)
     df_similarities = AD.analyze_similarity(base_test=x_test, base_train=x_train, similarity_metric="tanimoto")
+    print(df_similarities.head(20))
     threshold_below_05 = len(df_similarities[df_similarities["Max"] < 0.5])
     threshold_below06 = len(df_similarities[(df_similarities["Max"] >= 0.5) & (df_similarities["Max"] < 0.6)])
     threshold_below07 = len(df_similarities[(df_similarities["Max"] >= 0.6) & (df_similarities["Max"] < 0.7)])
@@ -127,7 +332,7 @@ def check_external_test_in_ad(df_train: pd.DataFrame, df_test: pd.DataFrame):
     threshold_below09 = len(df_similarities[(df_similarities["Max"] >= 0.8) & (df_similarities["Max"] < 0.9)])
     threshold_below1 = len(df_similarities[(df_similarities["Max"] >= 0.9) & (df_similarities["Max"] < 1.0)])
     threshold_equal1 = len(df_similarities[(df_similarities["Max"] == 1.0)])
-    assert (
+    assert ( 
         len(df_test)
         == threshold_below_05
         + threshold_below06
@@ -190,8 +395,8 @@ def check_how_much_of_dsstox_in_ad_class():
     df_dsstox = get_dsstox()
     log.info("\n Check if DSStox sets in AD of Readded classification")
     df_curated_scs, df_curated_biowin, df_curated_final = get_datasets()
-    # log.info(f"\n                 Checking if entries of DSStox in AD of df_curated_scs")
-    # check_external_test_in_ad(df_train=df_curated_scs, df_test=df_dsstox)
+    log.info(f"\n                 Checking if entries of DSStox in AD of df_curated_scs")
+    check_external_test_in_ad(df_train=df_curated_scs, df_test=df_dsstox)
     log.info(f"\n                 Checking if entries of DSStox in AD of df_curated_biowin")
     check_external_test_in_ad(df_train=df_curated_biowin, df_test=df_dsstox)
     log.info(f"\n                 Checking if entries of DSStox in AD of df_curated_final")
@@ -199,8 +404,8 @@ def check_how_much_of_dsstox_in_ad_class():
 
 
 if __name__ == "__main__":
-    # calculate_tanimoto_similarity_class_huang()
-    # calculate_tanimoto_similarity_curated_scs()
-    # calculate_tanimoto_similarity_curated_biowin()
-    # calculate_tanimoto_similarity_curated_final()
+    calculate_tanimoto_similarity_class_huang()
+    calculate_tanimoto_similarity_curated_scs()
+    calculate_tanimoto_similarity_curated_biowin()
+    calculate_tanimoto_similarity_curated_final()
     check_how_much_of_dsstox_in_ad_class()
