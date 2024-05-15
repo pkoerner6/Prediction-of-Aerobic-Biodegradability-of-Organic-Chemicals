@@ -34,14 +34,8 @@ Contains all kinds of functions used in the other scripts.
 ### ml_functions.py
 Contains functions for creating, validating, and testing machine learning models. 
 
-### xml_parse.py
-Running this file requires you to download the REACH study results dossiers from the [IUCLID website](https://iuclid6.echa.europa.eu). 
-The code is largely based on code by Gluege et al. and can be used to retrieve information on biodegradation screening tests. 
-The output of this file is used to create the additional testing set used in the Huang_Zhang.py file. 
-It also creates the data frame that will be used to remove read-across studies. 
-
 ### data_processing.py
-This file carries out the steps described in the SMILES-Retrieval-Pipeline to create the $\text{Curated}_\text{S}$ and the $\text{Curated}_\text{SCS}$ datasets. 
+This file carries out the steps described in the SMILES-Retrieval-Pipeline to create the $\text{Curated}_\text{S}$ and the $\text{Curated}_\text{SCS}$ datasets. It uses the dataset iuclid_echa.csv which includes information on biodegradation screening tests from REACH. The code for retrieving this data will be published seperately.
 
 ### add_pka_values.py
 To run this file, the molgpka_venv needs to be activated. 
