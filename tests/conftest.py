@@ -3,8 +3,6 @@ import pandas as pd
 import numpy as np
 
 
-d = {"A": [1, 2, 3], "B": [4, 5, 6]}
-
 echem_df_paper_dict = {
     "name": {0: "-", 1: "-", 2: "-", 3: "-", 4: "-", 5: "-"},
     "name_type": {
@@ -2088,12 +2086,6 @@ df_for_aggregate_dict = {
         6: "InChI=1S/C8H8O3/c1-11-7-4-2-6(3-5-7)8(9)10/h2-5H,1H3,(H,9,10)",
     },
 }
-
-
-@pytest.fixture
-def xml_data() -> pd.DataFrame:
-    df = pd.DataFrame.from_dict(d)
-    return df
 
 
 @pytest.fixture

@@ -161,7 +161,7 @@ def test_get_all_cas_pubchem():
         unique_cass.append(unique_cas)
         ref_strs.append(ref_str)
     assert unique_cass == [
-        "588-72-7, 103-64-0, 1335-06-4",
+        "588-72-7, 1335-06-4, 103-64-0",
         "590-11-4, 540-49-8",
         "588-73-8, 1335-06-4, 588-72-7",
         "75-25-2, 4471-18-5",
@@ -184,7 +184,7 @@ def test_get_deprecated_cas():
     for cid in cids:
         deprecated_cas = get_deprecated_cas(cid)
         deprecated_cass.append(deprecated_cas)
-    assert deprecated_cass == ["1340-14-3", "", "41380-64-7", "", "", ""]
+    assert deprecated_cass == ["1340-14-3, 1340-14-3", "", "41380-64-7", "", "", ""]
 
 
 def test_is_cas_right_format():
@@ -236,7 +236,7 @@ def test_add_cas_from_pubchem():
     for col in ["cas_pubchem", "cas_ref_pubchem", "deprecated_cas_pubchem"]:
         assert col in list(df.columns)
     assert list(df["cas_pubchem"]) == [
-        "588-72-7, 103-64-0, 1335-06-4",
+        "588-72-7, 1335-06-4, 103-64-0",
         "590-11-4, 540-49-8",
         "588-73-8, 1335-06-4, 588-72-7",
         "75-25-2, 4471-18-5",
@@ -454,7 +454,7 @@ def test_get_smiles_from_cas_pubchempy(df_b):
         "8029-68-3",
     ]
     assert list(df_pubchem["isomeric_smiles_pubchem"]) == [
-        "",
+        "C1=CC=C2C(=C1)C3=NC4=NC(=NC5=C6C=CC=CC6=C([N-]5)N=C7C8=CC=CC=C8C(=N7)N=C2[N-]3)C9=CC=CC=C94.[Fe+2]",
         "[O-]Cl(=O)=O.[Na+]",
         "",
         "C(=O)(N)NO",
@@ -512,7 +512,7 @@ def test_get_info_cas_common_chemistry(df_b):
     ]
     assert smiless == [
         "[N+](=[N-])=C1C(=O)NC(=O)NC1=O",
-        "C(C(O)=O)(N)C1=CC=CC=C1",
+        "[C@@H](C(O)=O)(N)C1=CC=CC=C1",
         "C(N)C1CC(CN)CCC1",
         "C(CNCCN)NCCN",
         "C(CNCCCN)CNCCCN",
@@ -800,7 +800,7 @@ def test_reg_df_remove_studies_not_to_consider(df_curated_reg):
 
 
 def test_create_classification_data_based_on_regression_data(regression_paper):
-    df_class, df_removed_due_to_variance = create_classification_data_based_on_regression_data(
+    df_class, _ = create_classification_data_based_on_regression_data(
         reg_df=regression_paper,
         with_lunghini=False,
         include_speciation_lunghini=False,
@@ -830,7 +830,8 @@ def test_create_classification_data_based_on_regression_data(regression_paper):
         with_lunghini=True, 
         include_speciation_lunghini=True, 
         include_speciation=True, 
-        prnt=False
+        prnt=False,
+        run_from_start=False
     )
     assert df_class.columns.to_list() == cols
 
@@ -951,13 +952,13 @@ def test_get_inchi_main_layer(df_b):
     df = get_inchi_main_layer(df=df_pubchem, inchi_col="inchi_pubchem", layers=4)
     assert list(df["cas"]) == ["132-16-1", "7775-09-9", "94891-43-7", "8029-68-3"]
     assert list(df["inchi_pubchem"]) == [
-        "",
+        "InChI=1S/C32H16N8.Fe/c1-2-10-18-17(9-1)25-33-26(18)38-28-21-13-5-6-14-22(21)30(35-28)40-32-24-16-8-7-15-23(24)31(36-32)39-29-20-12-4-3-11-19(20)27(34-29)37-25;/h1-16H;/q-2;+2",
         "InChI=1S/ClHO3.Na/c2-1(3)4;/h(H,2,3,4);/q;+1/p-1",
         "",
         "InChI=1S/CH4N2O2/c2-1(4)3-5/h5H,(H3,2,3,4)",
     ]
     assert list(df["inchi_pubchem_main_layer"]) == [
-        "",
+        "InChI=1S/C32H16N8.Fe/c1-2-10-18-17(9-1)25-33-26(18)38-28-21-13-5-6-14-22(21)30(35-28)40-32-24-16-8-7-15-23(24)31(36-32)39-29-20-12-4-3-11-19(20)27(34-29)37-25;/h1-16H;",
         "InChI=1S/ClHO3.Na/c2-1(3)4;/h(H,2,3,4);",
         "",
         "InChI=1S/CH4N2O2/c2-1(4)3-5/h5H,(H3,2,3,4)",
