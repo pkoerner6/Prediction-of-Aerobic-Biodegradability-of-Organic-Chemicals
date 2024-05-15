@@ -72,25 +72,25 @@ def replace_smiles_with_smiles_gluege(df: pd.DataFrame, df_checked: pd.DataFrame
         output_type="inchi",
     )
     smiles_huang_gluege_dont_match: List[str] = []
-
     def get_smiles_ec_num(row):
         cas = row["cas"]
         match = df_checked[df_checked["cas"] == cas]
-        inchi_huang = row["inchi_from_smiles"]
+        inchi = row["inchi_from_smiles"]
         if len(match["smiles"].values) == 0:
             log.warn("This CAS RN was not checked by Gluege et al.", cas=cas)
             smiles = row["smiles"]
         else:
             smiles = str(match["smiles"].values[0])
             inchi_checked = str(match["inchi_from_smiles"].values[0])
-            if inchi_huang != inchi_checked:
-                smiles_huang_gluege_dont_match.append(cas)
-        return pd.Series([smiles])
+            if inchi != inchi_checked:
+                smiles_huang_gluege_dont_match.append(inchi)
+                inchi = inchi_checked
+        return pd.Series([smiles, inchi])
 
-    df[["smiles"]] = df.apply(get_smiles_ec_num, axis=1)
+    df[["smiles", "inchi_from_smiles"]] = df.apply(get_smiles_ec_num, axis=1)
     log.info(
-        "For this many data points the InChI from the SMILES from the paper did not match the InChI from the SMILES from Gluege et al.",
-        no_match=len(smiles_huang_gluege_dont_match), no_match_substances=len(set(smiles_huang_gluege_dont_match))
+        "InChI from SMILES from Huang et al. did not match the InChI from SMILES from Gluege et al.",
+        no_match=len(smiles_huang_gluege_dont_match), no_match_inchi=len(set(smiles_huang_gluege_dont_match))
     )
     return df
 
@@ -150,17 +150,17 @@ def get_problematic_studies_echa() -> pd.DataFrame:
         ]
     ].rename(columns={"biodegradation_samplingtime": "time_day"})
     log.info(
-        "Total number of studies for which inventory number or CAS RN don't match reference substance (ECHA)",
+        "Read-across: Total number of studies for which inventory number or CAS RN don't match reference substance (ECHA)",
         problematic_studies=len(df_problematic),
     )
     return df_problematic
 
 
 def remove_studies_where_registered_substance_dont_match_reference_substance(
-    df_a_full: pd.DataFrame, df_a: pd.DataFrame
+    df_a_full: pd.DataFrame
 ) -> pd.DataFrame:
     df_problematic_studies = get_problematic_studies_echa()
-    df_problematic_studies = df_problematic_studies[df_problematic_studies["cas"].isin(df_a["cas"])].copy()
+    df_problematic_studies = df_problematic_studies[df_problematic_studies["cas"].isin(df_a_full["cas"])].copy()
 
     def remove_problematic_studies(row):
         cas = row["cas"]
@@ -182,16 +182,19 @@ def remove_studies_where_registered_substance_dont_match_reference_substance(
             ):
                 return True
         return False
-
     df_a_full["to_remove"] = df_a_full.apply(remove_problematic_studies, axis=1)
     df_removed_studies = df_a_full[df_a_full["to_remove"] == True].copy()
-    log.info("Removed studies in df_a because reference CAS RN didn't match CAS RN", removed=len(df_removed_studies), removed_substances=df_removed_studies.cas.nunique())
+    log.info("Read-across: Removed studies in df_a_full because reference CAS RN didn't match CAS RN", removed=len(df_removed_studies), removed_belonged_to_unique_cas=df_removed_studies.cas.nunique())
     df_a_full_clean = df_a_full[df_a_full["to_remove"] == False].copy()
     log.info(
         "Entries in df_a_full_clean without problematic studies",
         df_a_full_clean=len(df_a_full_clean),
+        unique_cas = df_a_full_clean.cas.nunique(),
+        unique_inchi = df_a_full_clean.inchi_from_smiles.nunique()
     )
     assert len(df_a_full_clean) + len(df_removed_studies) == len(df_a_full)
+    log.info("Read-across: Number of unique CAS RN removed due to read-across", unique_cas_removed=df_a_full.cas.nunique()-df_a_full_clean.cas.nunique())
+
     return df_a_full_clean
 
 
@@ -263,6 +266,7 @@ def process_multiple_component_data(
     )
     inchi_pubchem = "inchi_from_isomeric_smiles_pubchem"
     inchi_comptox = "inchi_from_smiles_comptox"
+    df_smiles_pubchem_comptox = df_multiple[(df_multiple[inchi_pubchem] != "") & (df_multiple[inchi_comptox] != "")]
     df_no_smiles_pubchem_comptox = df_multiple[(df_multiple[inchi_pubchem] == "") & (df_multiple[inchi_comptox] == "")]
     df_no_smiles_pubchem = df_multiple[(df_multiple[inchi_pubchem] == "") & (df_multiple[inchi_comptox] != "")]
     df_no_smiles_comptox = df_multiple[(df_multiple[inchi_pubchem] != "") & (df_multiple[inchi_comptox] == "")]
@@ -286,9 +290,11 @@ def process_multiple_component_data(
         ~df_multiple["cas"].isin(list(df_multiple_components_smiles_found["cas"]))
     ]
     text_to_df = {
+        "SMILES found on PubChem and Comptox": df_smiles_pubchem_comptox,
         "NO SMILES on PubChem and Comptox": df_no_smiles_pubchem_comptox,
-        "No SMILES on PubChem but on Comptox": df_no_smiles_pubchem,
+        "NO SMILES on PubChem but on Comptox": df_no_smiles_pubchem,
         "SMILES on PubChem but NOT on Comptox": df_no_smiles_comptox,
+        "SMILES on either PubChem or Comptox but NOT both": df_no_smiles_pubchem + df_no_smiles_comptox,
         "InChI from SMILES from PubChem and Comptox do NOT match": df_no_match_smiles_pubchem_comptox,
         "InChI from SMILES from PubChem and Comptox match": df_match_smiles_pubchem_comptox,
         "NO SMILES found yet (after PubChem and Comptox)": df_multiple_components_smiles_not_found,
@@ -507,10 +513,10 @@ def load_datasets() -> Tuple[
 
 
 def process_data_checked_by_gluege(
-    df_a_full_original: pd.DataFrame, df_checked: pd.DataFrame, df_a: pd.DataFrame
+    df_a_full_original: pd.DataFrame, df_checked: pd.DataFrame
 ) -> pd.DataFrame:
     df_a_full = replace_smiles_with_smiles_gluege(df_a_full_original, df_checked)
-    df_a_full = remove_studies_where_registered_substance_dont_match_reference_substance(df_a_full, df_a)
+    df_a_full = remove_studies_where_registered_substance_dont_match_reference_substance(df_a_full)
     return df_a_full
 
 
@@ -578,20 +584,26 @@ def process_full_dataset(
         df_multiple_components_smiles_found,
         df_multiple_components_smiles_not_found,
     )
-    log.info("Entries in df_a_full after processing", df_a_full=len(df_a_full))
-    log.info("Entries in df_b_full after processing", df_b_full=len(df_b_found_full))
+    log.info("Entries in df_a_full after processing", df_a_full=len(df_a_full), unique_cas=df_a_full.cas.nunique(), unique_inchi=df_a_full.inchi_from_smiles.nunique())
+    log.info("Entries in df_b_full after processing", df_b_full=len(df_b_found_full), unique_cas=df_b_found_full.cas.nunique(), unique_inchi=df_b_found_full.inchi_from_smiles.nunique())
     log.info("Dataset for which SMILES not found", datapoints=len(df_smiles_not_found_full))
     df_full = pd.concat([df_a_full, df_b_found_full])
-    log.info("Entries in df_full", df_full=len(df_full))
+    log.info("Entries in df_full", df_full=len(df_full), unique_cas=df_full.cas.nunique(), unique_inchi=df_full.inchi_from_smiles.nunique())
+
+    log.info("Replacing SMILES with SMILES with chemical speciation")
+    df_full_with_chemical_speciation, _ = replace_smiles_with_smiles_with_chemical_speciation(df_full.copy())
+    log.info("Dataset size after replacing SMILES with chemical speciation", entries=len(df_full_with_chemical_speciation), unique_cas=df_full_with_chemical_speciation.cas.nunique(), unique_inchi=df_full_with_chemical_speciation.inchi_from_smiles.nunique())
 
     log.info("Replacing multiple CAS RN for one InChI")
     df_full = replace_multiple_cas_for_one_inchi(df_full, prnt=False)
-
-    df_full_with_chemical_speciation, _ = replace_smiles_with_smiles_with_chemical_speciation(df_full.copy())
-    log.info("Dataset size after replacing SMILES with chemical speciation", entries=len(df_full_with_chemical_speciation))
+    log.info("Number of substances after replacing multiple CAS RN for one InChI for df_full", unique_cas=df_full.cas.nunique(), unique_inchi=df_full.inchi_from_smiles.nunique())
+    df_full_with_chemical_speciation = replace_multiple_cas_for_one_inchi(df_full_with_chemical_speciation, prnt=False)
+    log.info("Number of substances after replacing multiple CAS RN for one InChI for df_full_with_chemical_speciation", unique_cas=df_full_with_chemical_speciation.cas.nunique(), unique_inchi=df_full_with_chemical_speciation.inchi_from_smiles.nunique())
 
     df_full, _ = remove_organo_metals_function(df=df_full, smiles_column="smiles")
+    log.info("Number of substances after removing organo metals for df_full", unique_cas=df_full.cas.nunique(), unique_inchi=df_full.inchi_from_smiles.nunique())
     df_full_with_chemical_speciation, _ = remove_organo_metals_function(df=df_full_with_chemical_speciation, smiles_column="smiles")
+    log.info("Number of substances after after removing organo metals for df_full_with_chemical_speciation", unique_cas=df_full_with_chemical_speciation.cas.nunique(), unique_inchi=df_full_with_chemical_speciation.inchi_from_smiles.nunique())
     return df_full, df_full_with_chemical_speciation
 
 
@@ -635,10 +647,10 @@ def aggregate_duplicates(df: pd.DataFrame):
 
 if __name__ == "__main__":
 
-    df_checked, df_a, df_b, df_a_full_original, df_b_full_original = load_datasets()
+    df_checked, _, df_b, df_a_full_original, df_b_full_original = load_datasets()
 
     log.info(" \n Processing data checked by Gluege et al.")
-    df_a_full = process_data_checked_by_gluege(df_a_full_original=df_a_full_original, df_checked=df_checked, df_a=df_a)
+    df_a_full = process_data_checked_by_gluege(df_a_full_original=df_a_full_original, df_checked=df_checked)
 
     log.info(" \n Processing data NOT checked by Gluege et al.")
     (
@@ -672,9 +684,9 @@ if __name__ == "__main__":
     df_full_with_chemical_speciation = df_full_with_chemical_speciation[cols_to_keep]
 
     df_full_agg = aggregate_duplicates(df=df_full)
-    log.info("Entries in df_full_agg after aggregating", entries=len(df_full_agg))
+    log.info("Entries in df_full_agg after aggregating", entries=len(df_full_agg), unique_cas=df_full_agg.cas.nunique(), unique_inchi=df_full_agg.inchi_from_smiles.nunique())
     df_full_with_chemical_speciation_agg = aggregate_duplicates(df=df_full_with_chemical_speciation)
-    log.info("Entries in df_full_with_chemical_speciation_agg after aggregating", entries=len(df_full_with_chemical_speciation_agg))
+    log.info("Entries in df_full_with_chemical_speciation_agg after aggregating", entries=len(df_full_with_chemical_speciation_agg), unique_cas=df_full_with_chemical_speciation_agg.cas.nunique(), unique_inchi=df_full_with_chemical_speciation_agg.inchi_from_smiles.nunique())
 
     dfs = {
         "df_full": df_full,
@@ -683,7 +695,7 @@ if __name__ == "__main__":
         "df_full_with_chemical_speciation_agg": df_full_with_chemical_speciation_agg,
     }
     for df_name, df in dfs.items():
-        log.info(f"Entries in {df_name}", entries=len(df))
+        log.info(f"Entries in {df_name}", entries=len(df), unique_cas=df.cas.nunique(), unique_inchi=df.inchi_from_smiles.nunique())
 
     df_full_agg.to_csv("datasets/data_processing/reg_curated_s_no_metal.csv")
     df_full_with_chemical_speciation_agg.to_csv("datasets/data_processing/reg_curated_scs_no_metal.csv")

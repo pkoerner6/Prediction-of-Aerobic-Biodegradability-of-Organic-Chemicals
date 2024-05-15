@@ -27,6 +27,12 @@ parser.add_argument(
     default=42,
     help="Choose the random seed",
 )
+parser.add_argument(
+    "--run_lunghini_from_start",
+    default=False,
+    action=argparse.BooleanOptionalAction,
+    help="Needs to be set to True when with_lunghini is True and when running for the first time",
+)
 args = parser.parse_args()
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
@@ -37,8 +43,9 @@ from code_files.processing_functions import create_input_classification
 from code_files.ml_functions import train_XGBClassifier_on_all_data
 
 
-def create_class_datasets(with_lunghini: bool, include_speciation: bool) -> None:
+def create_class_datasets(with_lunghini: bool) -> None:
     df_reg_curated_scs = load_regression_df_curated_scs_no_metal()
+    log.info("\n Substances in df_reg_curated_scs", substances=df_reg_curated_scs.inchi_from_smiles.nunique())
 
     log.info("\n Creating curated_scs")
     curated_scs, _ = create_classification_data_based_on_regression_data(
@@ -47,6 +54,7 @@ def create_class_datasets(with_lunghini: bool, include_speciation: bool) -> None
         include_speciation_lunghini=True,
         include_speciation=False,
         prnt=args.prnt,
+        run_from_start=args.run_lunghini_from_start,
     )
     log.info("Entries in curated_scs", entries=len(curated_scs))
     log.info("Entries in curated_scs labeled as RB", entries=len(curated_scs[curated_scs["y_true"]==1]))
@@ -59,6 +67,7 @@ def create_class_datasets(with_lunghini: bool, include_speciation: bool) -> None
         with_lunghini=with_lunghini,
         include_speciation_lunghini=True,
         prnt=args.prnt,
+        run_from_start=args.run_lunghini_from_start,
     )
     curated_scs_biowin.reset_index(inplace=True, drop=True)
     curated_scs_biowin_problematic.reset_index(inplace=True, drop=True)
@@ -116,5 +125,5 @@ def create_curated_final() -> None:
 
 
 if __name__ == "__main__":
-    create_class_datasets(with_lunghini=args.with_lunghini, include_speciation=False)
+    create_class_datasets(with_lunghini=args.with_lunghini)
     create_curated_final()

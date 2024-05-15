@@ -60,13 +60,13 @@ def openbabel_convert(df: pd.DataFrame, input_type: str, column_name_input: str,
     return df
 
 
-def remove_smiles_with_incorrect_format(df: pd.DataFrame, col_name_smiles: str) -> pd.DataFrame:
+def remove_smiles_with_incorrect_format(df: pd.DataFrame, col_name_smiles: str, prnt=False) -> pd.DataFrame:
     """SMILES can be in a format that cannot be converted by openbabel"""
     df_clean = df.copy()
     df_clean[col_name_smiles] = df_clean[col_name_smiles].apply(lambda x: "nan" if "*" in x or "|" in x else x)
     df_clean = df_clean[df_clean[col_name_smiles] != "nan"]
-    invalid_smiles = ["[O-]C(=O)C1=CC=CC=C2", "[O-]C(=O)C1=CC=CC=C3", "c1cccc1"] # Invalid SMILES string: 2 unmatched ring bonds; last smiles is not convertable to mol
-    df_clean = df_clean[~df_clean[col_name_smiles].isin(invalid_smiles)]
+    if prnt: 
+        log.warn("Removed this many data points because SMILES had incorrect format", removed=len(df)-len(df_clean))
     df_clean.reset_index(inplace=True, drop=True)
     return df_clean
 
@@ -738,14 +738,14 @@ def replace_smiles_with_smiles_with_chemical_speciation(df_without_env_smiles: p
     df_removed = df_without_env_smiles[
         df_without_env_smiles["smiles"] == "delete"
     ]
+    log.info("Deleted data points", data_points=len(df_removed), unique_cas=df_removed.cas.nunique(), unique_inchi=df_removed.inchi_from_smiles.nunique())
     df_removed_no_main_component = df_removed[df_removed["reason"]=="no main component at pH 7.4"]
     df_removed_mixture = df_removed[(df_removed["reason"]=="mixture")]
-    log.info("Deleted because no main component at pH 7.4: ", no_main_component=df_removed_no_main_component.inchi_from_smiles.nunique())
-    log.info("Deleted because mixture: ", mixture=df_removed_mixture.inchi_from_smiles.nunique())
+    log.info("Deleted because no main component at pH 7.4: ", no_main_component_cas=df_removed_no_main_component.cas.nunique(), no_main_component_inchi=df_removed_no_main_component.inchi_from_smiles.nunique())
+    log.info("Deleted because mixture: ", mixture_cas=df_removed_mixture.cas.nunique(), mixture_inchi=df_removed_mixture.inchi_from_smiles.nunique())
     df_with_env_smiles = df_without_env_smiles[df_without_env_smiles["smiles"] != "delete"].copy()
     
     df_correct_smiles = remove_smiles_with_incorrect_format(df=df_with_env_smiles, col_name_smiles="smiles")
-
     df_with_env_smiles = openbabel_convert(
         df=df_correct_smiles,
         input_type="smiles",
@@ -774,7 +774,8 @@ def remove_cas_connected_to_more_than_one_inchi(df: pd.DataFrame, prnt: bool) ->
         if group["inchi_from_smiles"].nunique() > 1:
             cas_connected_to_more_than_one_inchi.append(cas)
     if len(cas_connected_to_more_than_one_inchi) == 0:
-        log.info("No CAS RN found that are connected to more than one InChI")
+        if prnt:
+            log.info("No CAS RN found that are connected to more than one InChI")
     else:
         if prnt:
             studies_connected_to_more_than_one_inchi = df[df["cas"].isin(cas_connected_to_more_than_one_inchi)]
@@ -1052,10 +1053,12 @@ def create_classification_data_based_on_regression_data(
     with_lunghini: bool, 
     include_speciation_lunghini: bool, 
     include_speciation: bool,
-    prnt: bool
+    prnt: bool,
+    run_from_start: bool,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:  # reg_df MUST be without speciation for it to work propperly
     df_included = reg_df_remove_studies_not_to_consider(reg_df)
     df_labelled = label_data_based_on_percentage(df_included)
+    log.info("Substances remaining in dataset after removing studies not to consider and labelling the data by percentage", substances=df_labelled.inchi_from_smiles.nunique())
 
     columns = ["cas", "smiles", "principle", "biodegradation_percent", "y_true", "inchi_from_smiles"]
     if include_speciation:
@@ -1065,16 +1068,18 @@ def create_classification_data_based_on_regression_data(
     df_multiples, df_singles, df_removed_due_to_variance = assign_group_label_and_drop_replicates(
         df=df_class, by_column="inchi_from_smiles"
     )
-
     log.info("Substances removed due to variance", num_substances=df_removed_due_to_variance.inchi_from_smiles.nunique())
+    log.info("Substances remaining in dataset after assigning group label and removing replicates", substances=len(df_singles)+len(df_multiples))
     assert len(df_multiples) + len(df_singles) + df_removed_due_to_variance["inchi_from_smiles"].nunique() == df_class["inchi_from_smiles"].nunique()
 
     if with_lunghini:
+        log.info("Adding data from Lunghini et al.")
         df_lunghini_additional = get_external_dataset_lunghini(
-            run_from_start=False, # Needs to be set to True when running for the first time
+            run_from_start=run_from_start,
             class_df=df_class,
             include_speciation_lunghini=include_speciation_lunghini,
         )
+        log.info("Adding this many data points from Lunghini et al.", entries=len(df_lunghini_additional), unique_cas=df_lunghini_additional.cas.nunique(), unique_inchi=df_lunghini_additional.inchi_from_smiles.nunique())
 
         df_singles = pd.concat([df_singles, df_lunghini_additional], axis=0)
         df_singles.reset_index(inplace=True, drop=True)
@@ -1093,6 +1098,7 @@ def create_classification_biowin(
     with_lunghini: bool,
     include_speciation_lunghini: bool,
     prnt: bool,
+    run_from_start: bool,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
     df_class, _ = create_classification_data_based_on_regression_data(
@@ -1101,6 +1107,7 @@ def create_classification_biowin(
         include_speciation_lunghini=include_speciation_lunghini,
         include_speciation=False,
         prnt=prnt,
+        run_from_start=run_from_start,
     )
     df_class_biowin, df_class_biowin_problematic = process_df_biowin(
         df=df_class,
@@ -1414,6 +1421,7 @@ def load_and_process_echa_additional(include_speciation: bool) -> Tuple[pd.DataF
         include_speciation_lunghini=False,
         include_speciation=include_speciation,
         prnt=False,
+        run_from_start=False,
     )
 
     echa_additional_reg_chemical_speciation, _ = replace_smiles_with_smiles_with_chemical_speciation(echa_additional_reg.copy())
