@@ -1,5 +1,5 @@
-# Enhancing Machine Learning Predicting of Aerobic Biodegradability of Organic Chemicals Through Data Curation and Label Noise Handling
-This is the code base for the paper "Enhancing Machine Learning Predicting of Aerobic Biodegradability of Organic Chemicals Through Data Curation and Label Noise Handling" written by Paulina Körner, Dr. Juliane Glüge, Dr. Stefan Glüge and Prof. Dr. Martin Scheringer. 
+# Critical Insights into Data Curation and Label Noise for Accurate Prediction of Aerobic Biodegradability of Organic Chemicals
+This is the code base for the paper "Critical Insights into Data Curation and Label Noise for Accurate Prediction of Aerobic Biodegradability of Organic Chemicals" written by Paulina Körner, Dr. Juliane Glüge, Dr. Stefan Glüge and Prof. Dr. Martin Scheringer. 
 
 ## Abstract
 ...
