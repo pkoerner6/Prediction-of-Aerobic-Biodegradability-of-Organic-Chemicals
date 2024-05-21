@@ -1199,6 +1199,7 @@ def convert_to_morgan_fingerprints(df: pd.DataFrame) -> pd.DataFrame:
 def convert_to_maccs_fingerprints(df: pd.DataFrame) -> pd.DataFrame:
     # 166 bit fingerprint
     df = df.copy()
+    df.reset_index(drop=True, inplace=True) # TODO
     mols = [AllChem.MolFromSmiles(smiles) for smiles in df["smiles"]]
     for index, value in enumerate(mols): 
         if value is None:
@@ -1288,8 +1289,8 @@ def openbabel_convert_smiles_to_inchi_with_nans(col_names_smiles_to_inchi: List[
         df[col] = df[col].astype(str)
         df[col] = df[col].apply(lambda x: "nan" if "*" in x else x)  # openabbel cannot convert smiles containing *
         df[col] = df[col].apply(lambda x: "nan" if "|" in x else x)  # openabbel cannot convert smiles containing |
-        df[col].replace(
-            to_replace=["nan", None, "", np.nan], value="c", inplace=True
+        df[col] = df[col].replace(
+            to_replace=["nan", None, "", np.nan], value="c"
         )  # use "c" as placeholder because openbabel cannot handle nans
         df = openbabel_convert(
             df=df,
@@ -1297,8 +1298,8 @@ def openbabel_convert_smiles_to_inchi_with_nans(col_names_smiles_to_inchi: List[
             column_name_input=col,
             output_type="inchi",
         )
-        df[f"inchi_from_{col}"].replace(to_replace="InChI=1S/CH3/h1H3", value="", inplace=True)  # remove placeholder
-        df[col].replace(to_replace="c", value="", inplace=True)  # remove placeholder
+        df[f"inchi_from_{col}"] = df[f"inchi_from_{col}"].replace(to_replace="InChI=1S/CH3/h1H3", value="")  # remove placeholder
+        df[col] = df[col].replace(to_replace="c", value="")  # remove placeholder
     return df
 
 
