@@ -52,9 +52,9 @@ def plot_bar_dataset_analysis(
     plt.ylabel(ylabel, fontsize=22)
     plt.legend(
         [
-            "$\mathregular{Curated_{SCS}}$",
-            "$\mathregular{Curated_{BIOWIN}}$",
-            "$\mathregular{Curated_{FINAL}}$",
+            "$\\mathregular{Curated_{SCS}}$",
+            "$\\mathregular{Curated_{BIOWIN}}$",
+            "$\\mathregular{Curated_{FINAL}}$",
         ],
         fontsize=16,
     )
@@ -85,7 +85,7 @@ def analyse_distribution(
             df = df.copy()
             df[col_name] = [ExactMolWt(Chem.MolFromSmiles(smiles)) for smiles in df["smiles"]]
             dfnames_to_dfs[df_name] = df
-        df = df.groupby(pd.cut(df[col_name], bins=bins, include_lowest=True))[col_name].count()
+        df = df.groupby(pd.cut(df[col_name], bins=bins, include_lowest=True), observed=False)[col_name].count()
         for idx, index in enumerate(df.index):
             dfname_to_groupamount[df_name].append(df[index])
             label = f"{int(index.left)} to {int(index.right)}"
@@ -240,9 +240,9 @@ def analyse_distribution_of_substances(dfnames_to_dfs: pd.DataFrame) -> None:
     plt.ylabel("Occurence", fontsize=18)
     plt.legend(
         [
-            "$\mathregular{Curated_{SCS}}$",
-            "$\mathregular{Curated_{BIOWIN}}$",
-            "$\mathregular{Curated_{FINAL}}$",
+            "$\\mathregular{Curated_{SCS}}$",
+            "$\\mathregular{Curated_{BIOWIN}}$",
+            "$\\mathregular{Curated_{FINAL}}$",
         ],
         fontsize=16,
     )
@@ -333,9 +333,9 @@ def analyse_occurence_of_halogens(dfnames_to_dfs: pd.DataFrame) -> None:
     plt.ylabel("Occurence", fontsize=18)
     plt.legend(
         [
-            "$\mathregular{Curated_{SCS}}$",
-            "$\mathregular{Curated_{BIOWIN}}$",
-            "$\mathregular{Curated_{FINAL}}$",
+            "$\\mathregular{Curated_{SCS}}$",
+            "$\\mathregular{Curated_{BIOWIN}}$",
+            "$\\mathregular{Curated_{FINAL}}$",
         ],
         fontsize=16,
     )
@@ -364,9 +364,9 @@ def analyse_occurence_of_halogens(dfnames_to_dfs: pd.DataFrame) -> None:
     plt.ylabel("Occurence (%)", fontsize=18)
     plt.legend(
         [
-            "$\mathregular{Curated_{SCS}}$",
-            "$\mathregular{Curated_{BIOWIN}}$",
-            "$\mathregular{Curated_{FINAL}}$",
+            "$\\mathregular{Curated_{SCS}}$",
+            "$\\mathregular{Curated_{BIOWIN}}$",
+            "$\\mathregular{Curated_{FINAL}}$",
         ],
         fontsize=16,
     )

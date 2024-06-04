@@ -65,6 +65,9 @@ def remove_smiles_with_incorrect_format(df: pd.DataFrame, col_name_smiles: str, 
     df_clean = df.copy()
     df_clean[col_name_smiles] = df_clean[col_name_smiles].apply(lambda x: "nan" if "*" in x or "|" in x else x)
     df_clean = df_clean[df_clean[col_name_smiles] != "nan"]
+    invalid_smiles = ["c1cccc1"] # Invalid SMILES string: not convertable to mol
+    df_clean = df_clean[~df_clean[col_name_smiles].isin(invalid_smiles)]
+    df_clean.reset_index(inplace=True, drop=True)
     if prnt: 
         log.warn("Removed this many data points because SMILES had incorrect format", removed=len(df)-len(df_clean))
     df_clean.reset_index(inplace=True, drop=True)
@@ -1085,7 +1088,7 @@ def create_classification_data_based_on_regression_data(
         df_singles.reset_index(inplace=True, drop=True)
 
     df_class = pd.concat([df_multiples, df_singles], axis=0)
-    df_class = replace_multiple_cas_for_one_inchi(df=df_class, prnt=prnt)
+    # df_class = replace_multiple_cas_for_one_inchi(df=df_class, prnt=prnt)
     df_class.drop(["principle", "biodegradation_percent"], axis=1, inplace=True)
     df_class.reset_index(inplace=True, drop=True)
 
@@ -1199,6 +1202,7 @@ def convert_to_morgan_fingerprints(df: pd.DataFrame) -> pd.DataFrame:
 def convert_to_maccs_fingerprints(df: pd.DataFrame) -> pd.DataFrame:
     # 166 bit fingerprint
     df = df.copy()
+    df.reset_index(drop=True, inplace=True) # TODO
     mols = [AllChem.MolFromSmiles(smiles) for smiles in df["smiles"]]
     for index, value in enumerate(mols): 
         if value is None:
@@ -1288,8 +1292,8 @@ def openbabel_convert_smiles_to_inchi_with_nans(col_names_smiles_to_inchi: List[
         df[col] = df[col].astype(str)
         df[col] = df[col].apply(lambda x: "nan" if "*" in x else x)  # openabbel cannot convert smiles containing *
         df[col] = df[col].apply(lambda x: "nan" if "|" in x else x)  # openabbel cannot convert smiles containing |
-        df[col].replace(
-            to_replace=["nan", None, "", np.nan], value="c", inplace=True
+        df[col] = df[col].replace(
+            to_replace=["nan", None, "", np.nan], value="c"
         )  # use "c" as placeholder because openbabel cannot handle nans
         df = openbabel_convert(
             df=df,
@@ -1297,8 +1301,8 @@ def openbabel_convert_smiles_to_inchi_with_nans(col_names_smiles_to_inchi: List[
             column_name_input=col,
             output_type="inchi",
         )
-        df[f"inchi_from_{col}"].replace(to_replace="InChI=1S/CH3/h1H3", value="", inplace=True)  # remove placeholder
-        df[col].replace(to_replace="c", value="", inplace=True)  # remove placeholder
+        df[f"inchi_from_{col}"] = df[f"inchi_from_{col}"].replace(to_replace="InChI=1S/CH3/h1H3", value="")  # remove placeholder
+        df[col] = df[col].replace(to_replace="c", value="")  # remove placeholder
     return df
 
 
