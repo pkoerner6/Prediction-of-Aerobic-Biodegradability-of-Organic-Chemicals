@@ -1,5 +1,4 @@
 
-from py_compile import PycInvalidationMode
 import numpy as np
 import pandas as pd
 import structlog
@@ -126,8 +125,8 @@ class ApplicabilityDomain:
         
         #Get analysis table
         table_analysis = ApplicabilityDomain.analyze_similarity(self, base_test=base_test, base_train=base_train,
-                                                            similarity_metric=similarity_metric,
-                                                            alpha=alpha, beta=beta)
+                                                            similarity_metric=similarity_metric)
+                                                            # alpha=alpha, beta=beta) # TODO
         table_analysis.index = np.arange(0, len(table_analysis), 1)
         
         results = {}

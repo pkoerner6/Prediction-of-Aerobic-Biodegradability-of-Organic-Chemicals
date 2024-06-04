@@ -65,6 +65,9 @@ def remove_smiles_with_incorrect_format(df: pd.DataFrame, col_name_smiles: str, 
     df_clean = df.copy()
     df_clean[col_name_smiles] = df_clean[col_name_smiles].apply(lambda x: "nan" if "*" in x or "|" in x else x)
     df_clean = df_clean[df_clean[col_name_smiles] != "nan"]
+    invalid_smiles = ["c1cccc1"] # Invalid SMILES string: not convertable to mol
+    df_clean = df_clean[~df_clean[col_name_smiles].isin(invalid_smiles)]
+    df_clean.reset_index(inplace=True, drop=True)
     if prnt: 
         log.warn("Removed this many data points because SMILES had incorrect format", removed=len(df)-len(df_clean))
     df_clean.reset_index(inplace=True, drop=True)
@@ -1085,7 +1088,7 @@ def create_classification_data_based_on_regression_data(
         df_singles.reset_index(inplace=True, drop=True)
 
     df_class = pd.concat([df_multiples, df_singles], axis=0)
-    df_class = replace_multiple_cas_for_one_inchi(df=df_class, prnt=prnt)
+    # df_class = replace_multiple_cas_for_one_inchi(df=df_class, prnt=prnt)
     df_class.drop(["principle", "biodegradation_percent"], axis=1, inplace=True)
     df_class.reset_index(inplace=True, drop=True)
 

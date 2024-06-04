@@ -16,6 +16,7 @@ import argparse
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from code_files.processing_functions import further_processing_of_echa_data
+from code_files.processing_functions import reg_df_remove_studies_not_to_consider
 from code_files.processing_functions import get_df_with_unique_cas
 from code_files.processing_functions import remove_organo_metals_function
 from code_files.processing_functions import get_smiles_from_cas_pubchempy
@@ -184,7 +185,7 @@ def remove_studies_where_registered_substance_dont_match_reference_substance(
         return False
     df_a_full["to_remove"] = df_a_full.apply(remove_problematic_studies, axis=1)
     df_removed_studies = df_a_full[df_a_full["to_remove"] == True].copy()
-    log.info("Read-across: Removed studies in df_a_full because reference CAS RN didn't match CAS RN", removed=len(df_removed_studies), removed_belonged_to_unique_cas=df_removed_studies.cas.nunique())
+    # log.info("Read-across: Removed studies in df_a_full because reference CAS RN didn't match CAS RN", removed=len(df_removed_studies), removed_belonged_to_unique_cas=df_removed_studies.cas.nunique())
     df_a_full_clean = df_a_full[df_a_full["to_remove"] == False].copy()
     log.info(
         "Entries in df_a_full_clean without problematic studies",
@@ -211,10 +212,12 @@ def process_one_component_data(
     if new_cas_common_chemistry:
         df_b[["smiles_from_ccc", "inchi_from_ccc"]] = df_b.progress_apply(func=get_smiles_inchi_from_ccc, axis=1)
         df_b.to_csv(f"datasets/data_processing/df_one_component_ccc.csv")
-    df_b = pd.read_csv(f"datasets/data_processing/df_one_component_ccc.csv", index_col=0)
-    df_smiles_found = df_b[df_b["smiles_from_ccc"].notnull()].copy()
-    df_smiles_not_found = df_b[df_b["smiles_from_ccc"].isnull()].copy()
-    assert len(df_smiles_found) + len(df_smiles_not_found) == len(df_b)
+    df_b_ccc = pd.read_csv(f"datasets/data_processing/df_one_component_ccc.csv", index_col=0)
+    df_b_ccc = df_b_ccc[df_b_ccc["cas"].isin(df_b["cas"])] # TODO
+
+    df_smiles_found = df_b_ccc[df_b_ccc["smiles_from_ccc"].notnull()].copy()
+    df_smiles_not_found = df_b_ccc[df_b_ccc["smiles_from_ccc"].isnull()].copy()
+    assert len(df_smiles_found) + len(df_smiles_not_found) == len(df_b_ccc)
     log.info("SMILES found on CAS CC for one component substances", num=len(df_smiles_found))
     df_multiple_components = df_smiles_found[df_smiles_found["smiles_from_ccc"].str.contains(".", regex=False)]
     if len(df_multiple_components) > 0:
@@ -244,12 +247,14 @@ def process_multiple_component_data(
         "datasets/data_processing/df_smiles_multiple_component_pubchem_no_metals.csv",
         index_col=0,
     )
-    assert len(df_multiple_components) == len(df_pubchem)
+    df_pubchem = df_pubchem[df_pubchem["cas"].isin(df_multiple_components["cas"])] # TODO
+    assert len(df_multiple_components) == len(df_pubchem) # TODO
 
     if new_comptox:
         df_comptox = get_smiles_from_cas_comptox(df=df_pubchem)
         df_comptox.to_csv("datasets/data_processing/comptox_no_metals.csv")
     df_multiple = pd.read_csv("datasets/data_processing/comptox_no_metals.csv", index_col=0)
+    df_multiple = df_multiple[df_multiple["cas"].isin(df_pubchem["cas"])] # TODO
 
     assert len(df_multiple_components) == len(df_multiple)
 
@@ -365,9 +370,11 @@ def process_multiple_components_smiles_not_found(
             f"datasets/data_processing/df_multiple_components_smiles_not_found_ccc_cirpy_no_metals.csv"
         )
     len_old_df_smiles_not_found = len(df_smiles_not_found)
+    df_smiles_not_found_old = df_smiles_not_found.copy() # TODO
     df_smiles_not_found = pd.read_csv(
         f"datasets/data_processing/df_multiple_components_smiles_not_found_ccc_cirpy_no_metals.csv", index_col=0
     )
+    df_smiles_not_found = df_smiles_not_found[df_smiles_not_found["cas"].isin(df_smiles_not_found_old["cas"])] # TODO
     if len(df_smiles_not_found) != len_old_df_smiles_not_found:
         log.fatal("Need to run new cirpy!!")
 
@@ -459,6 +466,7 @@ def get_full_df_b(
 
 def get_dfs() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     df = load_regression_df()
+    df = reg_df_remove_studies_not_to_consider(df) # TODO
     cols = [
         "name",
         "name_type",
@@ -488,6 +496,7 @@ def load_datasets() -> Tuple[
     df_reg, df_unique_cas, df_checked = get_dfs()
     log.info("Entries in df", entries=len(df_reg))
     log.info("Unique cas in df", unique_cas=len(df_unique_cas))
+    log.info("Unique SMILES in df", unique_cas=df_reg.smiles.nunique())
     df_a, df_b, df_a_full_original, df_b_full_original = get_df_a_and_b(
         df_unique_cas=df_unique_cas, df_checked=df_checked, df_reg=df_reg
     )

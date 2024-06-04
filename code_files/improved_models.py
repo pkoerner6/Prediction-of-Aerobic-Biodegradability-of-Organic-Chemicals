@@ -797,10 +797,10 @@ def run_classifiers_MolFormer(datasets: Dict[str, pd.DataFrame]) -> None:
         }
     elif args.test_set == "df_curated_biowin":
         classifiers = {
-            # "MLPClassifier": tune_and_train_MLPClassifier,
-            # "SVC": tune_and_train_SVC,
-            # "RidgeClassifierCV": tune_and_train_RidgeClassifierCV,
-            # "XGBClassifier": tune_and_train_XGBClassifier,
+            "MLPClassifier": tune_and_train_MLPClassifier,
+            "SVC": tune_and_train_SVC,
+            "RidgeClassifierCV": tune_and_train_RidgeClassifierCV,
+            "XGBClassifier": tune_and_train_XGBClassifier,
             "RidgeClassifier": tune_and_train_RidgeClassifier,
         }
 
