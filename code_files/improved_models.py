@@ -17,6 +17,8 @@ log = structlog.get_logger()
 from typing import List, Dict, Tuple
 
 from sklearn.model_selection import train_test_split
+import sklearn
+print(sklearn.__version__) # TODO 
 from lazypredict.Supervised import LazyClassifier
 from sklearn.utils import all_estimators
 from sklearn.base import ClassifierMixin
