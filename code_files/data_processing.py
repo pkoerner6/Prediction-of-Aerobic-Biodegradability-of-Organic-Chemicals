@@ -16,7 +16,6 @@ import argparse
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from code_files.processing_functions import further_processing_of_echa_data
-from code_files.processing_functions import reg_df_remove_studies_not_to_consider
 from code_files.processing_functions import get_df_with_unique_cas
 from code_files.processing_functions import remove_organo_metals_function
 from code_files.processing_functions import get_smiles_from_cas_pubchempy
@@ -29,6 +28,7 @@ from code_files.processing_functions import load_gluege_data
 from code_files.processing_functions import check_number_of_components
 from code_files.processing_functions import openbabel_convert_smiles_to_inchi_with_nans
 from code_files.processing_functions import get_inchi_main_layer
+from code_files.processing_functions import get_molecular_formula_from_inchi
 from code_files.processing_functions import get_smiles_inchi_cirpy
 from code_files.processing_functions import openbabel_convert
 from code_files.processing_functions import remove_smiles_with_incorrect_format
@@ -72,26 +72,48 @@ def replace_smiles_with_smiles_gluege(df: pd.DataFrame, df_checked: pd.DataFrame
         column_name_input="smiles",
         output_type="inchi",
     )
-    smiles_huang_gluege_dont_match: List[str] = []
+
+    df = get_inchi_main_layer(df=df, inchi_col="inchi_from_smiles", layers=4)
+    df = get_molecular_formula_from_inchi(df=df, inchi_col="inchi_from_smiles")
+    df_checked = get_inchi_main_layer(df=df_checked, inchi_col="inchi_from_smiles", layers=4)
+    df_checked = get_molecular_formula_from_inchi(df=df_checked, inchi_col="inchi_from_smiles")
+
+    inchi_huang_gluege_dont_match: List[str] = []
+    inchi_main_huang_gluege_dont_match: List[str] = []
+    molecular_formular_huang_gluege_dont_match: List[str] = []
     def get_smiles_ec_num(row):
         cas = row["cas"]
         match = df_checked[df_checked["cas"] == cas]
         inchi = row["inchi_from_smiles"]
+        inchi_main = row["inchi_from_smiles_main_layer"]
+        mf = row["inchi_from_smiles_molecular_formula"]
         if len(match["smiles"].values) == 0:
             log.warn("This CAS RN was not checked by Gluege et al.", cas=cas)
             smiles = row["smiles"]
         else:
             smiles = str(match["smiles"].values[0])
             inchi_checked = str(match["inchi_from_smiles"].values[0])
+            inchi_checked_main = str(match["inchi_from_smiles_main_layer"].values[0])
+            inchi_checked_mf = str(match["inchi_from_smiles_molecular_formula"].values[0])
             if inchi != inchi_checked:
-                smiles_huang_gluege_dont_match.append(inchi)
+                inchi_huang_gluege_dont_match.append(inchi)
                 inchi = inchi_checked
+            if inchi_main != inchi_checked_main:
+                inchi_main_huang_gluege_dont_match.append(inchi)
+            if mf != inchi_checked_mf:
+                molecular_formular_huang_gluege_dont_match.append(inchi)
         return pd.Series([smiles, inchi])
 
     df[["smiles", "inchi_from_smiles"]] = df.apply(get_smiles_ec_num, axis=1)
     log.info(
         "InChI from SMILES from Huang et al. did not match the InChI from SMILES from Gluege et al.",
-        no_match=len(smiles_huang_gluege_dont_match), no_match_inchi=len(set(smiles_huang_gluege_dont_match))
+        no_match=len(inchi_huang_gluege_dont_match), 
+        no_match_inchi=len(set(inchi_huang_gluege_dont_match)), 
+        no_match_inchi_percent="{:.1f}".format(len(set(inchi_huang_gluege_dont_match))/df.cas.nunique()*100),
+        no_match_inchi_main=len(set(inchi_main_huang_gluege_dont_match)), 
+        no_match_inchi_main_percent="{:.1f}".format(len(set(inchi_main_huang_gluege_dont_match))/df.cas.nunique()*100),
+        no_match_inchi_molecular_formula=len(set(molecular_formular_huang_gluege_dont_match)), 
+        no_match_inchi_molecular_formula_percent="{:.1f}".format(len(set(molecular_formular_huang_gluege_dont_match))/df.cas.nunique()*100),
     )
     return df
 
@@ -103,9 +125,7 @@ def get_df_a_and_b(
     df_b = df_unique_cas[~df_unique_cas["cas"].isin(df_checked["cas"].tolist())].copy()
     df_a_full_original = df_reg[df_reg["cas"].isin(df_a["cas"].tolist())].copy()
     df_b_full_original = df_reg[df_reg["cas"].isin(df_b["cas"].tolist())].copy()
-    log.info("Entries in df_a", entries_df_a=len(df_a))
     df_a_full_original = df_reg[df_reg["cas"].isin(list(df_a["cas"]))].copy()
-    log.info("Entries in df_b", entries_df_b=len(df_b))
     df_b_full_original = df_reg[df_reg["cas"].isin(list(df_b["cas"]))].copy()
     return (
         df_a,
@@ -213,7 +233,6 @@ def process_one_component_data(
         df_b[["smiles_from_ccc", "inchi_from_ccc"]] = df_b.progress_apply(func=get_smiles_inchi_from_ccc, axis=1)
         df_b.to_csv(f"datasets/data_processing/df_one_component_ccc.csv")
     df_b_ccc = pd.read_csv(f"datasets/data_processing/df_one_component_ccc.csv", index_col=0)
-    df_b_ccc = df_b_ccc[df_b_ccc["cas"].isin(df_b["cas"])] # TODO
 
     df_smiles_found = df_b_ccc[df_b_ccc["smiles_from_ccc"].notnull()].copy()
     df_smiles_not_found = df_b_ccc[df_b_ccc["smiles_from_ccc"].isnull()].copy()
@@ -247,14 +266,11 @@ def process_multiple_component_data(
         "datasets/data_processing/df_smiles_multiple_component_pubchem_no_metals.csv",
         index_col=0,
     )
-    df_pubchem = df_pubchem[df_pubchem["cas"].isin(df_multiple_components["cas"])] # TODO
-    assert len(df_multiple_components) == len(df_pubchem) # TODO
 
     if new_comptox:
         df_comptox = get_smiles_from_cas_comptox(df=df_pubchem)
         df_comptox.to_csv("datasets/data_processing/comptox_no_metals.csv")
     df_multiple = pd.read_csv("datasets/data_processing/comptox_no_metals.csv", index_col=0)
-    df_multiple = df_multiple[df_multiple["cas"].isin(df_pubchem["cas"])] # TODO
 
     assert len(df_multiple_components) == len(df_multiple)
 
@@ -370,11 +386,9 @@ def process_multiple_components_smiles_not_found(
             f"datasets/data_processing/df_multiple_components_smiles_not_found_ccc_cirpy_no_metals.csv"
         )
     len_old_df_smiles_not_found = len(df_smiles_not_found)
-    df_smiles_not_found_old = df_smiles_not_found.copy() # TODO
     df_smiles_not_found = pd.read_csv(
-        f"datasets/data_processing/df_multiple_components_smiles_not_found_ccc_cirpy_no_metals.csv", index_col=0
-    )
-    df_smiles_not_found = df_smiles_not_found[df_smiles_not_found["cas"].isin(df_smiles_not_found_old["cas"])] # TODO
+            f"datasets/data_processing/df_multiple_components_smiles_not_found_ccc_cirpy_no_metals.csv", index_col=0
+        )
     if len(df_smiles_not_found) != len_old_df_smiles_not_found:
         log.fatal("Need to run new cirpy!!")
 
@@ -466,7 +480,6 @@ def get_full_df_b(
 
 def get_dfs() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     df = load_regression_df()
-    df = reg_df_remove_studies_not_to_consider(df) # TODO
     cols = [
         "name",
         "name_type",
@@ -494,9 +507,19 @@ def load_datasets() -> Tuple[
     pd.DataFrame,
 ]:
     df_reg, df_unique_cas, df_checked = get_dfs()
-    log.info("Entries in df", entries=len(df_reg))
-    log.info("Unique cas in df", unique_cas=len(df_unique_cas))
-    log.info("Unique SMILES in df", unique_cas=df_reg.smiles.nunique())
+    df_reg = remove_smiles_with_incorrect_format(df=df_reg, col_name_smiles="smiles")
+    df_reg = openbabel_convert(df=df_reg, input_type="smiles", column_name_input="smiles", output_type="inchi")
+    log.info("Entries in regression df", entries=len(df_reg), unique_cas=len(df_unique_cas), unique_smiles=df_reg.smiles.nunique(), unique_inchi=df_reg.inchi_from_smiles.nunique())
+    
+    inchi_groups = df_reg.groupby('inchi_from_smiles')['cas'].nunique()
+    num_inchi_with_multiple_cas = inchi_groups[inchi_groups > 1].count()
+    log.info("Number of InChI that are associated with multiple CAS RN", num_inchi_with_multiple_cas=num_inchi_with_multiple_cas)
+
+    cas_groups = df_reg.groupby('cas')['inchi_from_smiles'].nunique()
+    num_cas_with_multiple_inchi = cas_groups[cas_groups > 1].count()
+    log.info("Number of CAS RN that are associated with multiple InChI", num_cas_with_multiple_inchi=num_cas_with_multiple_inchi)
+
+
     df_a, df_b, df_a_full_original, df_b_full_original = get_df_a_and_b(
         df_unique_cas=df_unique_cas, df_checked=df_checked, df_reg=df_reg
     )

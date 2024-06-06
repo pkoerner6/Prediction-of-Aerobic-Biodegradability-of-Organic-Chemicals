@@ -66,7 +66,11 @@ def remove_smiles_with_incorrect_format(df: pd.DataFrame, col_name_smiles: str, 
     df_clean[col_name_smiles] = df_clean[col_name_smiles].apply(lambda x: "nan" if "*" in x or "|" in x else x)
     df_clean = df_clean[df_clean[col_name_smiles] != "nan"]
     invalid_smiles = ["c1cccc1"] # Invalid SMILES string: not convertable to mol
+    len_df_clean = len(df_clean)
     df_clean = df_clean[~df_clean[col_name_smiles].isin(invalid_smiles)]
+    len_df_clean_after = len(df_clean)
+    if len_df_clean_after < len_df_clean:
+        log.warn("Removed this many SMILES with incorrect format", removed=len_df_clean-len_df_clean_after)
     df_clean.reset_index(inplace=True, drop=True)
     if prnt: 
         log.warn("Removed this many data points because SMILES had incorrect format", removed=len(df)-len(df_clean))
@@ -1056,10 +1060,26 @@ def create_classification_data_based_on_regression_data(
     with_lunghini: bool, 
     include_speciation_lunghini: bool, 
     include_speciation: bool,
-    prnt: bool,
     run_from_start: bool,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:  # reg_df MUST be without speciation for it to work propperly
     df_included = reg_df_remove_studies_not_to_consider(reg_df)
+
+    log.info("Data points to consider for classification", data_points=len(df_included), unique_cas=df_included.cas.nunique())
+    inchi_counts = df_included.groupby('inchi_from_smiles').size()
+    num_inchi_multiple = inchi_counts[inchi_counts > 1].count()
+    log.info("Substances with more than one study result to consider", substances=num_inchi_multiple)
+    
+    grouped = df_included.groupby('inchi_from_smiles')
+    filtered_groups = grouped.filter(lambda x: len(x) > 1)
+    std_devs = filtered_groups.groupby('inchi_from_smiles')['biodegradation_percent'].std()
+    average_std_dev = round(std_devs.mean()*100, 1)
+    log.info("Average standard deviation in biodegradation for substances with more than one study result to consider", average_std_dev=average_std_dev)
+    
+    group_stats = filtered_groups.groupby('inchi_from_smiles')['biodegradation_percent'].agg(['std'])
+    over_30_percent_std = group_stats[group_stats['std'] > 0.3]
+    num_entries_over_30_percent_std = len(over_30_percent_std)
+    log.info("Substances with std over 30%", num_entries_over_30_percent_std=num_entries_over_30_percent_std, percent_of_num_inchi_multiple=round(num_entries_over_30_percent_std/num_inchi_multiple*100, 1))
+
     df_labelled = label_data_based_on_percentage(df_included)
     log.info("Substances remaining in dataset after removing studies not to consider and labelling the data by percentage", substances=df_labelled.inchi_from_smiles.nunique())
 
@@ -1071,7 +1091,7 @@ def create_classification_data_based_on_regression_data(
     df_multiples, df_singles, df_removed_due_to_variance = assign_group_label_and_drop_replicates(
         df=df_class, by_column="inchi_from_smiles"
     )
-    log.info("Substances removed due to variance", num_substances=df_removed_due_to_variance.inchi_from_smiles.nunique())
+    log.info("Substances removed due to variance", num_substances=df_removed_due_to_variance.inchi_from_smiles.nunique(), percentage_of_num_inchi_multiple=round(df_removed_due_to_variance.inchi_from_smiles.nunique()/num_inchi_multiple*100, 1))
     log.info("Substances remaining in dataset after assigning group label and removing replicates", substances=len(df_singles)+len(df_multiples))
     assert len(df_multiples) + len(df_singles) + df_removed_due_to_variance["inchi_from_smiles"].nunique() == df_class["inchi_from_smiles"].nunique()
 
@@ -1088,7 +1108,6 @@ def create_classification_data_based_on_regression_data(
         df_singles.reset_index(inplace=True, drop=True)
 
     df_class = pd.concat([df_multiples, df_singles], axis=0)
-    # df_class = replace_multiple_cas_for_one_inchi(df=df_class, prnt=prnt)
     df_class.drop(["principle", "biodegradation_percent"], axis=1, inplace=True)
     df_class.reset_index(inplace=True, drop=True)
 
@@ -1100,7 +1119,6 @@ def create_classification_biowin(
     reg_df: pd.DataFrame,
     with_lunghini: bool,
     include_speciation_lunghini: bool,
-    prnt: bool,
     run_from_start: bool,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
@@ -1109,14 +1127,12 @@ def create_classification_biowin(
         with_lunghini=with_lunghini,
         include_speciation_lunghini=include_speciation_lunghini,
         include_speciation=False,
-        prnt=prnt,
         run_from_start=run_from_start,
     )
     df_class_biowin, df_class_biowin_problematic = process_df_biowin(
         df=df_class,
         mode="class",
     )
-    df_class_biowin = replace_multiple_cas_for_one_inchi(df=df_class_biowin, prnt=prnt)
     return df_class_biowin, df_class_biowin_problematic
 
 
@@ -1306,7 +1322,7 @@ def openbabel_convert_smiles_to_inchi_with_nans(col_names_smiles_to_inchi: List[
     return df
 
 
-def get_inchi_main_layer(df: pd.DataFrame, inchi_col: str, layers=int) -> pd.DataFrame:
+def get_inchi_main_layer(df: pd.DataFrame, inchi_col: str, layers=4) -> pd.DataFrame:
     df = df.copy()
 
     def get_inchi_main_layer_inner_function(row):
@@ -1314,6 +1330,17 @@ def get_inchi_main_layer(df: pd.DataFrame, inchi_col: str, layers=int) -> pd.Dat
         return inchi_main_layer_smiles
 
     df[f"{inchi_col}_main_layer"] = df.apply(get_inchi_main_layer_inner_function, axis=1)
+    return df
+
+
+def get_molecular_formula_from_inchi(df: pd.DataFrame, inchi_col: str) -> pd.DataFrame:
+    df = df.copy()
+
+    def get_molecular_formula_from_inchi_inner_function(row):
+        inchi_main_layer_smiles = get_inchi_layers(row, col_name=inchi_col, layers=2)
+        return inchi_main_layer_smiles
+
+    df[f"{inchi_col}_molecular_formula"] = df.apply(get_molecular_formula_from_inchi_inner_function, axis=1)
     return df
 
 
@@ -1424,7 +1451,6 @@ def load_and_process_echa_additional(include_speciation: bool) -> Tuple[pd.DataF
         with_lunghini=False,
         include_speciation_lunghini=False,
         include_speciation=include_speciation,
-        prnt=False,
         run_from_start=False,
     )
 

@@ -17,8 +17,6 @@ log = structlog.get_logger()
 from typing import List, Dict, Tuple
 
 from sklearn.model_selection import train_test_split
-import sklearn
-print(sklearn.__version__) # TODO 
 from lazypredict.Supervised import LazyClassifier
 from sklearn.utils import all_estimators
 from sklearn.base import ClassifierMixin
@@ -821,14 +819,14 @@ if __name__ == "__main__":
     if args.run_lazy:
         run_lazy_classifier(df=datasets[args.train_set], df_test=datasets[args.test_set])
 
-    if args.feature_type == "MACCS":
-        run_classifiers_MACCS(datasets=datasets)
-    if args.feature_type == "RDK":
-        run_classifiers_RDK(datasets=datasets)
-    if args.feature_type == "Morgan":
-        run_classifiers_Morgan(datasets=datasets)
-    if args.feature_type == "MolFormer":
-        run_classifiers_MolFormer(datasets=datasets)
+    # if args.feature_type == "MACCS":
+    #     run_classifiers_MACCS(datasets=datasets)
+    # if args.feature_type == "RDK":
+    #     run_classifiers_RDK(datasets=datasets)
+    # if args.feature_type == "Morgan":
+    #     run_classifiers_Morgan(datasets=datasets)
+    # if args.feature_type == "MolFormer":
+    #     run_classifiers_MolFormer(datasets=datasets)
 
 
 

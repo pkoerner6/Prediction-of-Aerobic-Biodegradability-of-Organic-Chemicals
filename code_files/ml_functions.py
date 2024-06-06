@@ -242,7 +242,7 @@ def skf_classification(
         model=model,
     )
 
-    metrics = ["accuracy", "sensitivity", "specificity"]
+    metrics = ["Balanced accuracy", "Sensitivity", "Specificity"]
     metrics_values = [
         lst_accu,
         lst_sensitivity,

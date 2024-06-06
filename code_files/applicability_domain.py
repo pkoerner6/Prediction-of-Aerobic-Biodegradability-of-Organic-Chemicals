@@ -279,7 +279,6 @@ def check_external_test_in_ad(df_train: pd.DataFrame, df_test: pd.DataFrame):
 
     AD = ApplicabilityDomain(verbose=True)
     df_similarities = AD.analyze_similarity(base_test=x_test, base_train=x_train, similarity_metric="tanimoto")
-    print(df_similarities.head(20))
     threshold_below_05 = len(df_similarities[df_similarities["Max"] < 0.5])
     threshold_below06 = len(df_similarities[(df_similarities["Max"] >= 0.5) & (df_similarities["Max"] < 0.6)])
     threshold_below07 = len(df_similarities[(df_similarities["Max"] >= 0.6) & (df_similarities["Max"] < 0.7)])
@@ -350,26 +349,40 @@ def check_how_much_of_dsstox_in_ad_class():
     df_dsstox = get_dsstox()
     log.info("\n Check if DSStox sets in AD of Readded classification")
     df_curated_scs, df_curated_biowin, df_curated_final = get_datasets()
-    df_dsstox1 = df_dsstox[:400000]
-    df_dsstox2 = df_dsstox[400000:]
+    df_dsstox1 = df_dsstox[:200000]
+    df_dsstox2 = df_dsstox[200000:400000]
+    df_dsstox3 = df_dsstox[400000:600000]
+    df_dsstox4 = df_dsstox[600000:]
     
     log.info(f"\n                 Checking if entries of DSStox in AD of df_curated_scs")
     log.info(f"\n Part 1")
     check_external_test_in_ad(df_train=df_curated_scs, df_test=df_dsstox1)
     log.info(f"\n Part 2")
     check_external_test_in_ad(df_train=df_curated_scs, df_test=df_dsstox2)
+    log.info(f"\n Part 3")
+    check_external_test_in_ad(df_train=df_curated_scs, df_test=df_dsstox3)
+    log.info(f"\n Part 4")
+    check_external_test_in_ad(df_train=df_curated_scs, df_test=df_dsstox4)
 
     log.info(f"\n                 Checking if entries of DSStox in AD of df_curated_biowin")
     log.info(f"\n Part 1")
     check_external_test_in_ad(df_train=df_curated_biowin, df_test=df_dsstox1)
     log.info(f"\n Part 2")
     check_external_test_in_ad(df_train=df_curated_biowin, df_test=df_dsstox2)
+    log.info(f"\n Part 3")
+    check_external_test_in_ad(df_train=df_curated_biowin, df_test=df_dsstox3)
+    log.info(f"\n Part 4")
+    check_external_test_in_ad(df_train=df_curated_biowin, df_test=df_dsstox4)
 
     log.info(f"\n                 Checking if entries of DSStox in AD of df_curated_final")
     log.info(f"\n Part 1")
     check_external_test_in_ad(df_train=df_curated_final, df_test=df_dsstox1)
     log.info(f"\n Part 2")
     check_external_test_in_ad(df_train=df_curated_final, df_test=df_dsstox2)
+    log.info(f"\n Part 3")
+    check_external_test_in_ad(df_train=df_curated_final, df_test=df_dsstox3)
+    log.info(f"\n Part 4")
+    check_external_test_in_ad(df_train=df_curated_final, df_test=df_dsstox4)
 
 
 if __name__ == "__main__":
