@@ -231,7 +231,7 @@ def process_one_component_data(
 
     if new_cas_common_chemistry:
         df_b[["smiles_from_ccc", "inchi_from_ccc"]] = df_b.progress_apply(func=get_smiles_inchi_from_ccc, axis=1)
-        df_b.to_csv(f"datasets/data_processing/df_one_component_ccc.csv")
+        df_b.to_csv(f"datasets/data_processing/df_one_component_ccc.csv") 
     df_b_ccc = pd.read_csv(f"datasets/data_processing/df_one_component_ccc.csv", index_col=0)
 
     df_smiles_found = df_b_ccc[df_b_ccc["smiles_from_ccc"].notnull()].copy()
@@ -261,7 +261,7 @@ def process_multiple_component_data(
 
     if new_pubchem:
         df_pubchem = get_smiles_from_cas_pubchempy(df_multiple_components)
-        df_pubchem.to_csv("datasets/data_processing/df_smiles_multiple_component_pubchem_no_metals.csv")
+        df_pubchem.to_csv("datasets/data_processing/df_smiles_multiple_component_pubchem_no_metals.csv") 
     df_pubchem = pd.read_csv(
         "datasets/data_processing/df_smiles_multiple_component_pubchem_no_metals.csv",
         index_col=0,
@@ -269,7 +269,7 @@ def process_multiple_component_data(
 
     if new_comptox:
         df_comptox = get_smiles_from_cas_comptox(df=df_pubchem)
-        df_comptox.to_csv("datasets/data_processing/comptox_no_metals.csv")
+        df_comptox.to_csv("datasets/data_processing/comptox_no_metals.csv") 
     df_multiple = pd.read_csv("datasets/data_processing/comptox_no_metals.csv", index_col=0)
 
     assert len(df_multiple_components) == len(df_multiple)
@@ -384,7 +384,7 @@ def process_multiple_components_smiles_not_found(
         )
         df_smiles_not_found.to_csv(
             f"datasets/data_processing/df_multiple_components_smiles_not_found_ccc_cirpy_no_metals.csv"
-        )
+        ) 
     len_old_df_smiles_not_found = len(df_smiles_not_found)
     df_smiles_not_found = pd.read_csv(
             f"datasets/data_processing/df_multiple_components_smiles_not_found_ccc_cirpy_no_metals.csv", index_col=0
