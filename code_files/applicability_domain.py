@@ -19,7 +19,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from code_files.processing_functions import load_class_data_paper
 
 
-######################################################
 # Adapted from pyADA https://github.com/jeffrichardchemistry/pyADA/blob/main/pyADA/pyADA.py
 
 from tqdm import tqdm
@@ -57,20 +56,12 @@ class Similarity:
 
 
 class ApplicabilityDomain:
-    def __init__(self, verbose=False):
+    def __init__(self, verbose):
         self.__sims = Similarity()    
         self.__verbose = verbose
         self.similarities_table_ = None
                 
     def analyze_similarity(self, base_test, base_train, similarity_metric='tanimoto'):
-        """
-        Analysis of the similarity between molecular fingerprints
-        using different metrics. A table (dataframe pandas) will be
-        generated with the coefficients: Average, median, std,
-        maximum similarity and minimum similarity, for all compounds
-        in the test database in relation to the training database.
-        The alpha and beta parameters are only for 'tversky' metric.
-        """
 
         similarities = {}
 
@@ -107,10 +98,17 @@ class ApplicabilityDomain:
         return analyze
             
     
-    def fit(self, model, base_test, base_train, y_true, isTensorflow=False,
-            threshold_reference = 'max', threshold_step = (0, 1, 0.05),
-            similarity_metric='tanimoto', alpha = 1, beta = 1, metric_evaliation='rmse'):
-        
+    def fit(
+            self, 
+            model, 
+            base_test, 
+            base_train, 
+            y_true, 
+            threshold_reference, 
+            threshold_step, 
+            similarity_metric, 
+            metric_evaliation
+    ) -> Dict[str, float]:
         #reference parameters
         if threshold_reference.lower() == 'max':
             thref = 'Max'
@@ -126,69 +124,49 @@ class ApplicabilityDomain:
         #Get analysis table
         table_analysis = ApplicabilityDomain.analyze_similarity(self, base_test=base_test, base_train=base_train,
                                                             similarity_metric=similarity_metric)
-                                                            # alpha=alpha, beta=beta) # TODO
         table_analysis.index = np.arange(0, len(table_analysis), 1)
         
         results = {}
         total_thresholds = np.arange(threshold_step[0], threshold_step[1], threshold_step[2])
         
-        def get_table(thresholds, table_analysis, thref, samples_GT_threshold, base_test, isTensorflow, model, y_true, metric_evaliation, results):
-            samples_LT_threshold = table_analysis.loc[table_analysis[thref] < thresholds] #get just samples < threshold
-            new_xitest = base_test[samples_GT_threshold.index, :] #get samples > threshold in complete base_test
-            if isTensorflow:
-                new_ypred = model.predict(new_xitest) #precit y_pred
-                new_ypred[new_ypred <= 0.5] = 0
-                new_ypred[new_ypred > 0.5] = 1
-                new_ypred = new_ypred.astype(int)
-            else:
-                new_ypred = model.predict(new_xitest) #precit y_pred
-            new_ytrue = y_true[samples_GT_threshold.index] #get y_true (same index of xi_test) (y_true must be a array 1D in this case)
+        def get_table(thresholds, samples_between_thresholds, base_test, model, y_true, metric_evaliation, results):
+            new_xitest = base_test[samples_between_thresholds.index, :] 
+            new_ypred = model.predict(new_xitest)
+            new_ytrue = y_true[samples_between_thresholds.index]
+            assert len(new_xitest) == len(new_ypred) == len(new_ytrue)
             
-            #calc of ERROR METRICS (EX: RMSE) or correlation methods
             if metric_evaliation == 'acc':
-                error_ = accuracy_score(y_true=new_ytrue, y_pred=new_ypred)
+                performance_metric = accuracy_score(y_true=new_ytrue, y_pred=new_ypred)
             else:
                 log.error("This metric_evaliation is not defined")
                 
-            results['Threshold {}'.format(thresholds.round(5))] = [[error_],np.array(samples_LT_threshold.index)]
+            results['Threshold {}'.format(thresholds.round(5))] = performance_metric 
             return results
 
 
-        if self.__verbose:
-            
-            for thresholds in tqdm(total_thresholds):
-                samples_GT_threshold = table_analysis.loc[table_analysis[thref] >= thresholds] #get just samples > threshold
-                if len(samples_GT_threshold) == 0:
-                    print('\nStopping with Threshold {}. All similarities are less than or equal {} '.format(thresholds, thresholds))
-                    break
-                results = get_table(thresholds, table_analysis, thref, samples_GT_threshold, base_test, isTensorflow, model, y_true, metric_evaliation, results)
-                
-            return results
-        
-        else:            
-            for thresholds in total_thresholds:
-                samples_GT_threshold = table_analysis.loc[table_analysis[thref] >= thresholds] #get just samples > threshold
-                if len(samples_GT_threshold) == 0:
-                    print('\nStopping with Threshold {}. All similarities are less than or equal {} '.format(thresholds, thresholds))
-                    break
-                results = get_table(thresholds, table_analysis, thref, samples_GT_threshold, base_test, isTensorflow, model, y_true, metric_evaliation, results)
-                
-            return results
-
-
-######################################################
+        length = 0 
+        for index, thresholds in enumerate(tqdm(total_thresholds)):
+            if thresholds<0.4:
+                continue
+            elif thresholds==0.4:
+                samples_between_thresholds = table_analysis.loc[(table_analysis[thref] < thresholds)]
+            elif thresholds==1.0:
+                samples_between_thresholds = table_analysis.loc[(table_analysis[thref] <= thresholds) & (table_analysis[thref] >= (total_thresholds[index-1]))]
+            else:
+                samples_between_thresholds = table_analysis.loc[(table_analysis[thref] < thresholds) & (table_analysis[thref] >= (total_thresholds[index-1]))] 
+            length += len(samples_between_thresholds)
+            if len(samples_between_thresholds) == 0:
+                results[thresholds] = None
+            else:
+                results = get_table(thresholds, samples_between_thresholds, base_test, model, y_true, metric_evaliation, results)
+        assert len(table_analysis) == length 
+        return results
 
 
 def get_datasets() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    df_curated_scs = pd.read_csv(
-        "datasets/curated_data/class_curated_scs.csv", index_col=0
-    )
-    df_curated_biowin = pd.read_csv(
-        "datasets/curated_data/class_curated_biowin.csv", index_col=0
-    )
-    df_curated_final = pd.read_csv(
-        "datasets/curated_data/class_curated_final.csv", index_col=0
-    )
+    df_curated_scs = pd.read_csv("datasets/curated_data/class_curated_scs.csv", index_col=0)
+    df_curated_biowin = pd.read_csv("datasets/curated_data/class_curated_biowin.csv", index_col=0)
+    df_curated_final = pd.read_csv("datasets/curated_data/class_curated_final.csv", index_col=0)
     df_curated_scs = df_curated_scs
     df_curated_biowin = df_curated_biowin
     df_curated_final = df_curated_final
@@ -220,7 +198,7 @@ def calculate_tanimoto_similarity_class(df: pd.DataFrame, model_with_best_params
 
     threshold_to_data_below: Dict[float, List[int]] = defaultdict(list)
     threshold_to_data_between: Dict[float, List[int]] = defaultdict(list)
-    threshold_to_max: Dict[float, List[float]] = defaultdict(list)
+    threshold_to_acc_between_threshold: Dict[float, List[float]] = defaultdict(list)
     skf = StratifiedKFold(n_splits=nsplits, shuffle=True, random_state=random_state)
     for train_index, test_index in skf.split(x, y):
         x_train, x_test = x[train_index], x[test_index]
@@ -233,7 +211,7 @@ def calculate_tanimoto_similarity_class(df: pd.DataFrame, model_with_best_params
 
         sims = AD.analyze_similarity(base_test=x_test, base_train=x_train,
                              similarity_metric='tanimoto')
-        thresholds = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        thresholds = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
         for index, threshold in enumerate(thresholds):
             threshold_to_data_below[threshold].append(len(sims[sims["Max"] <= threshold]))
             if index > 0:
@@ -251,18 +229,33 @@ def calculate_tanimoto_similarity_class(df: pd.DataFrame, model_with_best_params
             similarity_metric="tanimoto",
             metric_evaliation="acc",
         )
-        for threshold, value in zip(thresholds, threshold_to_value.values()):
-            threshold_to_max[threshold].append(value[0][0])
+        for threshold, value in zip(thresholds[3:], threshold_to_value.values()):
+            if value != None:
+                threshold_to_acc_between_threshold[threshold].append(value)
 
-    for threshold in thresholds:
-        max_threshold = threshold_to_max[threshold]
+    for index, threshold in enumerate(thresholds):
+        if threshold < 0.4:
+            continue
+        if threshold in threshold_to_acc_between_threshold:
+            acc_between_threshold = threshold_to_acc_between_threshold[threshold]
+            if len(acc_between_threshold) == 1:
+                expected_accuracy_between_thresholds = f"{acc_between_threshold[0]} %"
+            else:
+                mean_acc = statistics.mean(acc_between_threshold) * 100
+                stdev_acc = statistics.stdev(acc_between_threshold) * 100
+                expected_accuracy_between_thresholds = f"{mean_acc:.1f} ± {stdev_acc:.1f} %"
+        else:
+            expected_accuracy_between_thresholds = "None"
         data_below = threshold_to_data_below[threshold]
         data_between = threshold_to_data_between[threshold]
+        
+        if threshold==0.4:
+            text = f"Data points below {threshold}"
+        else: 
+            text = f"Data points between {thresholds[index-1]} and <{threshold}"
         log.info(
-            f"Data points below {threshold}",
-            max_accuracy=f"{'%.1f' % (statistics.mean(max_threshold)*100)}"
-            + " ± "
-            + f"{'%.1f' % (statistics.stdev(max_threshold)*100)} %",
+            text,
+            expected_accuracy_between_thresholds=expected_accuracy_between_thresholds,
             datapoints_below_t=f"{'%.1f' % sum(data_below)}",
             perc_below_t=f"{'%.1f' % ((sum(data_below) / len(df)) * 100)} %",
             perc_between_t=f"{'%.1f' % ((sum(data_between) / len(df)) * 100)} %",

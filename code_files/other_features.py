@@ -181,7 +181,7 @@ def train_XGBClassifier_other_features(
         y_train_fold_lst,
         x_test_fold_lst,
         y_test_fold_lst,
-        df_test_lst,
+        _,
         test_set_sizes,
     ) = skf_class_fixed_testset_other_features(
         df=df,
@@ -232,9 +232,6 @@ def run_for_different_dfs():
     df_test = datasets[args.test_set].copy()
 
     balanced_accuracy: List[np.ndarray] = [np.asarray([])] * len(datasets)
-    f1: List[np.ndarray] = [np.asarray([])] * len(datasets)
-    sensitivity: List[np.ndarray] = [np.asarray([])] * len(datasets)
-    specificity: List[np.ndarray] = [np.asarray([])] * len(datasets)
 
     for indx, (dataset_name, dataset) in enumerate(datasets.items()):
         log.info(f"Entries in {dataset_name}", entries=len(dataset))

@@ -28,6 +28,7 @@ from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.gaussian_process import GaussianProcessClassifier
 from sklearn.svm import LinearSVC
 from sklearn.svm import SVC
+from sklearn.svm import NuSVC
 from sklearn.linear_model import PassiveAggressiveClassifier
 from sklearn.linear_model import LogisticRegressionCV
 from sklearn.linear_model import Perceptron
@@ -607,9 +608,9 @@ def tune_and_train_LogisticRegression(df: pd.DataFrame, df_test: pd.DataFrame):
     model = LogisticRegression
     search_spaces = {
         "random_state": Categorical([args.random_seed]),
-        "solver": Categorical(["lbfgs", "liblinear", "newton-cg", "newton-cholesky", "sag", "saga"]),
+        "solver": Categorical(["lbfgs", "newton-cg", "newton-cholesky", "sag", "saga"]),
         "max_iter": Integer(80, 120),
-        "multi_class": Categorical(["auto", "ovr", "multinomial"]),
+        "multi_class": Categorical(["auto", "ovr"]),
     }
     log.info("Started tuning LogisticRegression")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
@@ -696,6 +697,24 @@ def tune_and_train_GradientBoostingClassifier(df: pd.DataFrame, df_test: pd.Data
     return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
+def tune_and_train_NuSVC(df: pd.DataFrame, df_test: pd.DataFrame):
+    model = NuSVC
+    search_spaces = {
+        "kernel": Categorical(["linear", "poly", "rbf", "sigmoid", "precomputed"]),
+        "degree": Integer(2, 3),
+        "random_state": Categorical([args.random_seed]),
+    }
+    log.info("Started tuning GradientBoostingClassifier")
+    lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
+        df=df,
+        df_test=df_test,
+        search_spaces=search_spaces,
+        model=model,
+    )
+    log.info("Finished tuning GradientBoostingClassifier")
+    return lst_accu, lst_sensitivity, lst_specificity, lst_f1
+
+
 def run_classifiers_MACCS(datasets: Dict[str, pd.DataFrame]) -> None:
     train_data = datasets[args.train_set]
     test_data = datasets[args.test_set]
@@ -704,17 +723,17 @@ def run_classifiers_MACCS(datasets: Dict[str, pd.DataFrame]) -> None:
         classifiers = {
             "MLPClassifier": tune_and_train_MLPClassifier,
             "HistGradientBoostingClassifier": tune_and_train_HistGradientBoostingClassifier,
-            "LogisticRegressionCV": tune_and_train_LogisticRegressionCV,
-            "GaussianProcessClassifier": tune_and_train_GaussianProcessClassifier,
-            "LinearSVC": tune_and_train_LinearSVC,
+            "RandomForestClassifier": tune_and_train_RandomForestClassifier,
+            "GradientBoostingClassifier": tune_and_train_GradientBoostingClassifier,
+            "ExtraTreesClassifier": tune_and_train_ExtraTreesClassifier,
         }
     elif args.test_set == "df_curated_biowin":
         classifiers = {
-            "XGBClassifier": tune_and_train_XGBClassifier,
             "RandomForestClassifier": tune_and_train_RandomForestClassifier,
-            "ExtraTreesClassifier": tune_and_train_ExtraTreesClassifier,
+            "XGBClassifier": tune_and_train_XGBClassifier,
             "HistGradientBoostingClassifier": tune_and_train_HistGradientBoostingClassifier,
-            "MLPClassifier": tune_and_train_MLPClassifier,
+            "ExtraTreesClassifier": tune_and_train_ExtraTreesClassifier,
+            "GradientBoostingClassifier": tune_and_train_GradientBoostingClassifier,
         }
 
     for classifier in classifiers:
@@ -731,19 +750,19 @@ def run_classifiers_RDK(datasets: Dict[str, pd.DataFrame]) -> None:
 
     if args.test_set == "df_curated_scs":
         classifiers = {
-            "MLPClassifier": tune_and_train_MLPClassifier, 
-            "LogisticRegressionCV": tune_and_train_LogisticRegressionCV,
+            # "LogisticRegressionCV": tune_and_train_LogisticRegressionCV, # TODO
+            "LogisticRegression": tune_and_train_LogisticRegression,
             "PassiveAggressiveClassifier": tune_and_train_PassiveAggressiveClassifier,
             "Perceptron": tune_and_train_Perceptron,
-            "LogisticRegression": tune_and_train_LogisticRegression,
+            "MLPClassifier": tune_and_train_MLPClassifier,
         }
     elif args.test_set == "df_curated_biowin":
         classifiers = {
             "MLPClassifier": tune_and_train_MLPClassifier,
-            "GradientBoostingClassifier": tune_and_train_GradientBoostingClassifier,
-            "ExtraTreesClassifier": tune_and_train_ExtraTreesClassifier,
-            "XGBClassifier": tune_and_train_XGBClassifier,
             "HistGradientBoostingClassifier": tune_and_train_HistGradientBoostingClassifier,
+            "XGBClassifier": tune_and_train_XGBClassifier,
+            "LogisticRegressionCV": tune_and_train_LogisticRegressionCV,
+            "SVC": tune_and_train_SVC,
         }
 
     for classifier in classifiers:
@@ -762,17 +781,17 @@ def run_classifiers_Morgan(datasets: Dict[str, pd.DataFrame]) -> None:
         classifiers = {
             "ExtraTreesClassifier": tune_and_train_ExtraTreesClassifier,
             "HistGradientBoostingClassifier": tune_and_train_HistGradientBoostingClassifier,
+            "MLPClassifier": tune_and_train_MLPClassifier,
             "XGBClassifier": tune_and_train_XGBClassifier,
-            "RandomForestClassifier": tune_and_train_RandomForestClassifier,
             "LogisticRegressionCV": tune_and_train_LogisticRegressionCV,
         }
     elif args.test_set == "df_curated_biowin":
         classifiers = {
             "ExtraTreesClassifier": tune_and_train_ExtraTreesClassifier,
-            "RandomForestClassifier": tune_and_train_RandomForestClassifier,
-            "LogisticRegressionCV": tune_and_train_LogisticRegressionCV,
-            "XGBClassifier": tune_and_train_XGBClassifier,
+            "SVC": tune_and_train_SVC,
+            "MLPClassifier": tune_and_train_MLPClassifier,
             "HistGradientBoostingClassifier": tune_and_train_HistGradientBoostingClassifier,
+            "RandomForestClassifier": tune_and_train_RandomForestClassifier,
         }
 
     for classifier in classifiers:
@@ -790,17 +809,17 @@ def run_classifiers_MolFormer(datasets: Dict[str, pd.DataFrame]) -> None:
     if args.test_set == "df_curated_scs":
         classifiers = {
             "SVC": tune_and_train_SVC,
-            "XGBClassifier": tune_and_train_XGBClassifier,
+            "NuSVC": tune_and_train_NuSVC,
             "MLPClassifier": tune_and_train_MLPClassifier,
-            "GaussianProcessClassifier": tune_and_train_GaussianProcessClassifier,
+            "HistGradientBoostingClassifier": tune_and_train_HistGradientBoostingClassifier,
             "RandomForestClassifier": tune_and_train_RandomForestClassifier,
         }
     elif args.test_set == "df_curated_biowin":
         classifiers = {
             "MLPClassifier": tune_and_train_MLPClassifier,
             "SVC": tune_and_train_SVC,
-            "RidgeClassifierCV": tune_and_train_RidgeClassifierCV,
             "XGBClassifier": tune_and_train_XGBClassifier,
+            "PassiveAggressiveClassifier": tune_and_train_PassiveAggressiveClassifier,
             "RidgeClassifier": tune_and_train_RidgeClassifier,
         }
 
@@ -812,6 +831,10 @@ def run_classifiers_MolFormer(datasets: Dict[str, pd.DataFrame]) -> None:
         )
 
 
+def train_with_default_xgboost():
+    return 
+
+
 if __name__ == "__main__":
 
     datasets = get_class_datasets()
@@ -819,14 +842,15 @@ if __name__ == "__main__":
     if args.run_lazy:
         run_lazy_classifier(df=datasets[args.train_set], df_test=datasets[args.test_set])
 
-    # if args.feature_type == "MACCS":
-    #     run_classifiers_MACCS(datasets=datasets)
-    # if args.feature_type == "RDK":
-    #     run_classifiers_RDK(datasets=datasets)
-    # if args.feature_type == "Morgan":
-    #     run_classifiers_Morgan(datasets=datasets)
-    # if args.feature_type == "MolFormer":
-    #     run_classifiers_MolFormer(datasets=datasets)
+    if args.feature_type == "MACCS":
+
+        run_classifiers_MACCS(datasets=datasets)
+    if args.feature_type == "RDK":
+        run_classifiers_RDK(datasets=datasets)
+    if args.feature_type == "Morgan":
+        run_classifiers_Morgan(datasets=datasets)
+    if args.feature_type == "MolFormer":
+        run_classifiers_MolFormer(datasets=datasets)
 
 
 

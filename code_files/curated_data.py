@@ -5,12 +5,14 @@ from typing import List, Tuple
 import sys
 import os
 import argparse
+import pickle
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from code_files.processing_functions import get_class_datasets
 from code_files.processing_functions import get_labels_colors_progress
 from code_files.processing_functions import plot_results_with_standard_deviation
 from code_files.ml_functions import train_XGBClassifier
+from code_files.ml_functions import train_XGBClassifier_on_all_data
 
 log = structlog.get_logger()
 
@@ -34,11 +36,16 @@ parser.add_argument(
     default="df_curated_scs",
     help="Choose the fixed test set",
 )
+parser.add_argument(
+    "--create_model_trained_on_all_data",
+    default=False,
+    action=argparse.BooleanOptionalAction,
+    help="If this is true then at the end an XGBClassifier will be trained on each of the 3 datasets and saved. ",
+)
 args = parser.parse_args()
 
 
 def train_classification_models(
-    with_lunghini: bool,
     use_adasyn: bool,
 ) -> Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray], List[np.ndarray]]:
 
@@ -66,13 +73,12 @@ def train_classification_models(
         f1[indx] = np.asarray(lst_f1_paper)
         sensitivity[indx] = np.asarray(lst_sensitivity_paper)
         specificity[indx] = np.asarray(lst_specificity_paper)
-        
+    
     return accuracy, f1, sensitivity, specificity
 
 
 def run_with_improved_data() -> None:
     balanced_accuracy, f1, sensitivity, specificity = train_classification_models(
-        with_lunghini=True,
         use_adasyn=True,
     )
 
@@ -100,6 +106,20 @@ def run_with_improved_data() -> None:
         )
 
 
+def create_model_trained_on_all_data():
+    datasets = get_class_datasets()
+    for df_name, df in datasets.items():
+        if df_name == "df_paper":
+            continue
+        model = train_XGBClassifier_on_all_data(
+            df=df,
+            random_seed=args.random_seed,
+            include_speciation=False,
+        )
+        pickle.dump(model, open(f"models/xgbc_{df_name}.pkl", 'wb'))
+
 if __name__ == "__main__":
     run_with_improved_data()
+    if args.create_model_trained_on_all_data:
+        create_model_trained_on_all_data()
 
