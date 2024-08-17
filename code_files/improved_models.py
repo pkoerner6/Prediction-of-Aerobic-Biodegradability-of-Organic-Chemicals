@@ -36,6 +36,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.linear_model import RidgeClassifierCV
 from sklearn.linear_model import RidgeClassifier
 from sklearn.neural_network import MLPClassifier
+from sklearn.metrics.pairwise import pairwise_kernels
+
 
 np.int = int  # Because of scikit-optimize
 from skopt.space import Real, Categorical, Integer
@@ -433,8 +435,8 @@ def tune_and_train_ExtraTreesClassifier(df: pd.DataFrame, df_test: pd.DataFrame)
         "max_depth": Categorical([None]),
         "max_features": Categorical(["sqrt", "log2", None]),
         "min_samples_leaf": Integer(1, 10),
-        "min_samples_split": Integer(2, 10),
-        "n_estimators": Integer(50, 1000),
+        "min_samples_split": Integer(1, 10),
+        "n_estimators": Integer(30, 100),
         "random_state": Categorical([args.random_seed]),
     }
     log.info("Started tuning ExtraTreesClassifier")
@@ -477,9 +479,9 @@ def tune_and_train_MLPClassifier(df: pd.DataFrame, df_test: pd.DataFrame):
         "solver": Categorical(["lbfgs", "sgd", "adam"]),
         "alpha": Real(0.000001, 0.1, "uniform"),
         "learning_rate_init": Real(0.0001, 0.1, "uniform"),
-        "max_iter": Integer(200, 600),
+        "max_iter": Integer(400, 800),
         "early_stopping": Categorical([True]),
-        "hidden_layer_sizes": Integer(120, 250),
+        "hidden_layer_sizes": Integer(120, 500),
     }
     log.info("Started tuning MLPClassifier")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
@@ -496,9 +498,9 @@ def tune_and_train_HistGradientBoostingClassifier(df: pd.DataFrame, df_test: pd.
     model = HistGradientBoostingClassifier
     search_spaces = {
         "learning_rate": Real(0.01, 0.4, "uniform"),
-        "max_iter": Integer(50, 200),
-        "max_leaf_nodes": Integer(15, 40),
-        "min_samples_leaf": Integer(2, 25),
+        "max_iter": Integer(80, 300),
+        "max_leaf_nodes": Integer(10, 60),
+        "min_samples_leaf": Integer(1, 12),
         "random_state": Categorical([args.random_seed]),
     }
     log.info("Started tuning HistGradientBoostingClassifier")
@@ -679,10 +681,10 @@ def tune_and_train_GradientBoostingClassifier(df: pd.DataFrame, df_test: pd.Data
     model = GradientBoostingClassifier
     search_spaces = {
         "loss": Categorical(["log_loss", "exponential"]),
-        "learning_rate": Real(0.01, 0.4, "uniform"),
-        "n_estimators": Integer(80, 120),
+        "learning_rate": Real(0.01, 0.7, "uniform"),
+        "n_estimators": Integer(80, 200),
         "criterion": Categorical(["friedman_mse", "squared_error"]),
-        "max_depth": Integer(2, 5),
+        "max_depth": Integer(2, 10),
         "random_state": Categorical([args.random_seed]),
         "max_features": Categorical(["sqrt", "log2"]),
     }
@@ -700,18 +702,18 @@ def tune_and_train_GradientBoostingClassifier(df: pd.DataFrame, df_test: pd.Data
 def tune_and_train_NuSVC(df: pd.DataFrame, df_test: pd.DataFrame):
     model = NuSVC
     search_spaces = {
-        "kernel": Categorical(["linear", "poly", "rbf", "sigmoid", "precomputed"]),
+        "kernel": Categorical(["linear", "poly", "rbf", "sigmoid"]),
         "degree": Integer(2, 3),
         "random_state": Categorical([args.random_seed]),
     }
-    log.info("Started tuning GradientBoostingClassifier")
+    log.info("Started tuning NuSVC")
     lst_accu, lst_sensitivity, lst_specificity, lst_f1 = tune_and_train_classifiers(
         df=df,
         df_test=df_test,
         search_spaces=search_spaces,
         model=model,
     )
-    log.info("Finished tuning GradientBoostingClassifier")
+    log.info("Finished tuning NuSVC")
     return lst_accu, lst_sensitivity, lst_specificity, lst_f1
 
 
