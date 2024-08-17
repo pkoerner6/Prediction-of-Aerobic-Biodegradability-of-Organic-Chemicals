@@ -2,7 +2,8 @@
 This is the code base for the paper "Critical Insights into Data Curation and Label Noise for Accurate Prediction of Aerobic Biodegradability of Organic Chemicals" written by Paulina Körner, Dr. Juliane Glüge, Dr. Stefan Glüge and Prof. Dr. Martin Scheringer. 
 
 ## Abstract
-...
+The focus of the current study is to enhance state-of-the-art Machine Learning (ML) models that can predict the aerobic biodegradability of organic chemicals through a data-centric approach. To do that, an already existing dataset that was previously used to train ML models was analyzed for mismatching chemical identifiers and data leakage between test and training set and the detected errors were corrected. Chemicals with high variance between study results were removed. An XGBoost was trained on the dataset and compared to a XGBoost that was trained on a dataset where certain substances were excluded. The results show that despite comprehensive data curation, only marginal improvement was observed in the classification model’s performance. This was attributed to three potential reasons: 1) a significant number of data labels were noisy, 2) the features could not sufficiently represent the chemicals, and/or 3) the model struggled to learn and generalize effectively. All three potential reasons were examined, but only removing data points with possibly noisy labels by performing label noise filtering using other predictive models increased the classification model’s balanced accuracy from 80.9% to 94.2%. While no indications were found that label noise filtering removed difficult-to-learn substances, this possibility cannot be entirely ruled out.
+
 
 ## Setup
 To run the code, Python3 is required. 
