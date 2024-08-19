@@ -1,5 +1,4 @@
 
-import numpy as np
 import pandas as pd
 import structlog
 import sys
@@ -8,169 +7,16 @@ import statistics
 from collections import defaultdict
 from sklearn.model_selection import StratifiedKFold
 from xgboost import XGBClassifier
-from rdkit.Chem import AllChem
-from rdkit.Chem.rdMolDescriptors import GetMACCSKeysFingerprint
 
 log = structlog.get_logger()
-from typing import List, Dict, Tuple
-
+from typing import List, Dict
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from code_files.processing_functions import load_class_data_paper
-
-
-# Adapted from pyADA https://github.com/jeffrichardchemistry/pyADA/blob/main/pyADA/pyADA.py
-
-from tqdm import tqdm
-from sklearn.metrics import accuracy_score
-
-class Smetrics:
-    def __init__(self):
-        self.maxdata = None
-        self.mindata = None 
-
-
-class Similarity:
-    """
-        All similarity calculations have a range of [0, 1]
-    """
-    def __init__(self):        
-        pass    
-    
-    def __coefs(self, vector1, vector2):
-        A = np.array(vector1).astype(int)
-        B = np.array(vector2).astype(int)
-
-        AnB = A & B #intersection
-        onlyA = np.array(B) < np.array(A) #A is a subset of B
-        onlyB = np.array(A) < np.array(B) #B is a subset of A
-        return AnB,onlyA,onlyB
-    
-
-    def tanimoto_similarity(self, vector1, vector2):
-        """
-        Structural similarity calculation based on tanimoto index. T(A,B) = (A ^ B)/(A + B - A^B)
-        """
-        AnB, onlyA, onlyB = Similarity.__coefs(self, vector1=vector1, vector2=vector2)
-        return AnB.sum() / (onlyA.sum() + onlyB.sum() + AnB.sum())
-
-
-class ApplicabilityDomain:
-    def __init__(self, verbose):
-        self.__sims = Similarity()    
-        self.__verbose = verbose
-        self.similarities_table_ = None
-                
-    def analyze_similarity(self, base_test, base_train, similarity_metric='tanimoto'):
-
-        similarities = {}
-
-        # get dictionary of all data tests similarities
-        def get_dict(base_train, i_test, similarities, n):
-            get_tests_similarities = [0]*len(base_train)
-            for i, i_train in enumerate(base_train):
-                if similarity_metric == 'tanimoto':
-                    get_tests_similarities[i] = (self.__sims.tanimoto_similarity(i_test, i_train))               
-                else:
-                    log.error("This similarity_metric does not exist")
-            similarities['Sample_test_{}'.format(n)] = np.array(get_tests_similarities)
-            return similarities
-        
-        if self.__verbose:
-            with tqdm(total=len(base_test)) as progbar:
-                for n,i_test in enumerate(base_test):
-                    similarities = get_dict(base_train, i_test, similarities, n)
-                    progbar.update(1)
-        else:
-            for n,i_test in enumerate(base_test):            
-                similarities = get_dict(base_train, i_test, similarities, n)
-                    
-        self.similarities_table_ = pd.DataFrame(similarities)
-        
-        analyze = pd.concat([self.similarities_table_.mean(),
-                             self.similarities_table_.median(),
-                             self.similarities_table_.std(),
-                             self.similarities_table_.max(),
-                             self.similarities_table_.min()],
-                             axis=1)        
-        analyze.columns = ['Mean', 'Median', 'Std', 'Max', 'Min']
-        
-        return analyze
-            
-    
-    def fit(
-            self, 
-            model, 
-            base_test, 
-            base_train, 
-            y_true, 
-            threshold_reference, 
-            threshold_step, 
-            similarity_metric, 
-            metric_evaliation
-    ) -> Dict[str, float]:
-        #reference parameters
-        if threshold_reference.lower() == 'max':
-            thref = 'Max'
-        elif threshold_reference.lower() == 'average':
-            thref = 'Mean'
-        elif threshold_reference.lower() == 'std':
-            thref = 'Std'
-        elif threshold_reference.lower() == 'median':
-            thref = 'Median'
-        else:
-            thref = 'Max'
-        
-        #Get analysis table
-        table_analysis = ApplicabilityDomain.analyze_similarity(self, base_test=base_test, base_train=base_train,
-                                                            similarity_metric=similarity_metric)
-        table_analysis.index = np.arange(0, len(table_analysis), 1)
-        
-        results = {}
-        total_thresholds = np.arange(threshold_step[0], threshold_step[1], threshold_step[2])
-        
-        def get_table(thresholds, samples_between_thresholds, base_test, model, y_true, metric_evaliation, results):
-            new_xitest = base_test[samples_between_thresholds.index, :] 
-            new_ypred = model.predict(new_xitest)
-            new_ytrue = y_true[samples_between_thresholds.index]
-            assert len(new_xitest) == len(new_ypred) == len(new_ytrue)
-            
-            if metric_evaliation == 'acc':
-                performance_metric = accuracy_score(y_true=new_ytrue, y_pred=new_ypred)
-            else:
-                log.error("This metric_evaliation is not defined")
-                
-            results['Threshold {}'.format(thresholds.round(5))] = performance_metric 
-            return results
-
-
-        length = 0 
-        for index, thresholds in enumerate(tqdm(total_thresholds)):
-            if thresholds<0.4:
-                continue
-            elif thresholds==0.4:
-                samples_between_thresholds = table_analysis.loc[(table_analysis[thref] < thresholds)]
-            elif thresholds==1.0:
-                samples_between_thresholds = table_analysis.loc[(table_analysis[thref] <= thresholds) & (table_analysis[thref] >= (total_thresholds[index-1]))]
-            else:
-                samples_between_thresholds = table_analysis.loc[(table_analysis[thref] < thresholds) & (table_analysis[thref] >= (total_thresholds[index-1]))] 
-            length += len(samples_between_thresholds)
-            if len(samples_between_thresholds) == 0:
-                results[thresholds] = None
-            else:
-                results = get_table(thresholds, samples_between_thresholds, base_test, model, y_true, metric_evaliation, results)
-        assert len(table_analysis) == length 
-        return results
-
-
-def get_datasets() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    df_curated_scs = pd.read_csv("datasets/curated_data/class_curated_scs.csv", index_col=0)
-    df_curated_biowin = pd.read_csv("datasets/curated_data/class_curated_biowin.csv", index_col=0)
-    df_curated_final = pd.read_csv("datasets/curated_data/class_curated_final.csv", index_col=0)
-    df_curated_scs = df_curated_scs
-    df_curated_biowin = df_curated_biowin
-    df_curated_final = df_curated_final
-    return df_curated_scs, df_curated_biowin, df_curated_final
+from code_files.processing_functions import get_datasets_for_ad
+from code_files.processing_functions import create_fingerprint_df
+from code_files.processing_functions import get_datasets_for_ad
+from code_files.processing_functions import ApplicabilityDomain
 
 
 def get_dsstox(new=True) -> pd.DataFrame:
@@ -181,14 +27,6 @@ def get_dsstox(new=True) -> pd.DataFrame:
         df_dsstox.to_csv("datasets/external_data/DSStox.csv")
     df_dsstox = pd.read_csv("datasets/external_data/DSStox.csv", index_col=0)
     return df_dsstox
-
-
-def create_fingerprint_df(df: pd.DataFrame) -> pd.DataFrame:
-    mols = [AllChem.MolFromSmiles(smiles) for smiles in df["smiles"]]
-    fps = [np.array(GetMACCSKeysFingerprint(mol)) for mol in mols]
-    df_fp = pd.DataFrame(data=fps)
-    return df_fp
-
 
 
 def calculate_tanimoto_similarity_class(df: pd.DataFrame, model_with_best_params, nsplits=5, random_state=42):
@@ -219,7 +57,7 @@ def calculate_tanimoto_similarity_class(df: pd.DataFrame, model_with_best_params
             else:
                 threshold_to_data_between[threshold].append(len(sims[sims["Max"] <= threshold]))
 
-        threshold_to_value = AD.fit(
+        threshold_to_value = AD.fit_ad(
             model=model_with_best_params,
             base_test=x_test,
             base_train=x_train,
@@ -314,34 +152,37 @@ def check_external_test_in_ad(df_train: pd.DataFrame, df_test: pd.DataFrame):
 def calculate_tanimoto_similarity_class_huang():
     log.info("\n Define AD of classification data Huang and Zhang")
     _, _, df_class_huang = load_class_data_paper()
-    df_class_huang = df_class_huang
+    df_class_huang = df_class_huang[:200] # TODO
     model = XGBClassifier()
     calculate_tanimoto_similarity_class(df=df_class_huang, model_with_best_params=model)
 
 
 def calculate_tanimoto_similarity_curated_scs():
     log.info("\n Define AD of df_curated_scs")
-    df_curated_scs, _, _ = get_datasets()
+    df_curated_scs, _, _ = get_datasets_for_ad()
+    df_curated_scs = df_curated_scs[:200] # TODO
     model = XGBClassifier()
     calculate_tanimoto_similarity_class(df=df_curated_scs, model_with_best_params=model)
 
 def calculate_tanimoto_similarity_curated_biowin():
     log.info("\n Define AD of df_curated_biowin")
-    _, df_curated_biowin, _ = get_datasets()
+    _, df_curated_biowin, _ = get_datasets_for_ad()
+    df_curated_biowin = df_curated_biowin[:200] # TODO
     model = XGBClassifier()
     calculate_tanimoto_similarity_class(df=df_curated_biowin, model_with_best_params=model)
 
 def calculate_tanimoto_similarity_curated_final():
     log.info("\n Define AD of df_curated_final")
-    _, _, df_curated_final = get_datasets()
+    _, _, df_curated_final = get_datasets_for_ad()
+    df_curated_final = df_curated_final[:200] # TODO
     model = XGBClassifier()
     calculate_tanimoto_similarity_class(df=df_curated_final, model_with_best_params=model)
 
 
 def check_how_much_of_dsstox_in_ad_class():
-    df_dsstox = get_dsstox()
+    df_dsstox = get_dsstox()[:500] # TODO
     log.info("\n Check if DSStox sets in AD of Readded classification")
-    df_curated_scs, df_curated_biowin, df_curated_final = get_datasets()
+    df_curated_scs, df_curated_biowin, df_curated_final = get_datasets_for_ad()
     df_dsstox1 = df_dsstox[:200000]
     df_dsstox2 = df_dsstox[200000:400000]
     df_dsstox3 = df_dsstox[400000:600000]

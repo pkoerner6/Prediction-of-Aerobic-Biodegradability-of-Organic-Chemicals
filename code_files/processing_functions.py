@@ -24,6 +24,10 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
 import matplotlib.pyplot as plt
+import statistics
+from collections import defaultdict
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import accuracy_score
 
 
 RDLogger.DisableLog("rdApp.*")  # Disable warnings from rdkit
@@ -1566,4 +1570,177 @@ def plot_results_with_standard_deviation(
         f"figures/{title}_seed{seed}_paper_hyperparameter_{save_ending}_test_set_{test_set_name}.png"
     )
     plt.close()
+
+
+
+def get_datasets_for_ad() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    df_curated_scs = pd.read_csv("datasets/curated_data/class_curated_scs.csv", index_col=0)
+    df_curated_biowin = pd.read_csv("datasets/curated_data/class_curated_biowin.csv", index_col=0)
+    df_curated_final = pd.read_csv("datasets/curated_data/class_curated_final.csv", index_col=0)
+    return df_curated_scs, df_curated_biowin, df_curated_final
+
+
+def create_fingerprint_df(df: pd.DataFrame) -> pd.DataFrame:
+    mols = [AllChem.MolFromSmiles(smiles) for smiles in df["smiles"]]
+    fps = [np.array(GetMACCSKeysFingerprint(mol)) for mol in mols]
+    df_fp = pd.DataFrame(data=fps)
+    return df_fp
+
+
+# Adapted from pyADA https://github.com/jeffrichardchemistry/pyADA/blob/main/pyADA/pyADA.py
+class Similarity:
+    """
+        All similarity calculations have a range of [0, 1]
+    """
+    def __init__(self):        
+        pass    
+    
+    def __coefs(self, vector1, vector2):
+        A = np.array(vector1).astype(int)
+        B = np.array(vector2).astype(int)
+
+        AnB = A & B #intersection
+        onlyA = np.array(B) < np.array(A) #A is a subset of B
+        onlyB = np.array(A) < np.array(B) #B is a subset of A
+        return AnB,onlyA,onlyB
+    
+
+    def tanimoto_similarity(self, vector1, vector2):
+        """
+        Structural similarity calculation based on tanimoto index. T(A,B) = (A ^ B)/(A + B - A^B)
+        """
+        AnB, onlyA, onlyB = Similarity.__coefs(self, vector1=vector1, vector2=vector2)
+        return AnB.sum() / (onlyA.sum() + onlyB.sum() + AnB.sum())
+
+
+class ApplicabilityDomain:
+    def __init__(self, verbose):
+        self.__sims = Similarity()    
+        self.__verbose = verbose
+        self.similarities_table_ = None
+                
+    def analyze_similarity(self, base_test, base_train, similarity_metric='tanimoto') -> pd.DataFrame:
+
+        similarities = {}
+
+        # get dictionary of all data tests similarities
+        def get_dict(base_train, i_test, similarities, n):
+            get_tests_similarities = [0]*len(base_train)
+            for i, i_train in enumerate(base_train):
+                if similarity_metric == 'tanimoto':
+                    get_tests_similarities[i] = (self.__sims.tanimoto_similarity(i_test, i_train))               
+                else:
+                    log.error("This similarity_metric does not exist")
+            similarities['Sample_test_{}'.format(n)] = np.array(get_tests_similarities)
+            return similarities
+        
+        if self.__verbose:
+            with tqdm(total=len(base_test)) as progbar:
+                for n,i_test in enumerate(base_test):
+                    similarities = get_dict(base_train, i_test, similarities, n)
+                    progbar.update(1)
+        else:
+            for n,i_test in enumerate(base_test):            
+                similarities = get_dict(base_train, i_test, similarities, n)
+                    
+        self.similarities_table_ = pd.DataFrame(similarities)
+        
+        analyze = pd.concat([self.similarities_table_.mean(),
+                             self.similarities_table_.median(),
+                             self.similarities_table_.std(),
+                             self.similarities_table_.max(),
+                             self.similarities_table_.min()],
+                             axis=1)        
+        analyze.columns = ['Mean', 'Median', 'Std', 'Max', 'Min']
+        
+        return analyze
+            
+    
+    def fit_ad(
+            self, 
+            model, 
+            base_test, 
+            base_train, 
+            y_true, 
+            threshold_reference, 
+            threshold_step, 
+            similarity_metric, 
+            metric_evaliation
+    ) -> Dict[str, float]:
+        #reference parameters
+        if threshold_reference.lower() == 'max':
+            thref = 'Max'
+        elif threshold_reference.lower() == 'average':
+            thref = 'Mean'
+        elif threshold_reference.lower() == 'std':
+            thref = 'Std'
+        elif threshold_reference.lower() == 'median':
+            thref = 'Median'
+        else:
+            thref = 'Max'
+        
+        #Get analysis table
+        table_analysis = ApplicabilityDomain.analyze_similarity(self, base_test=base_test, base_train=base_train,
+                                                            similarity_metric=similarity_metric)
+        table_analysis.index = np.arange(0, len(table_analysis), 1)
+        
+        results = {}
+        total_thresholds = np.arange(threshold_step[0], threshold_step[1], threshold_step[2])
+        
+        def get_table(thresholds, samples_between_thresholds, base_test, model, y_true, metric_evaliation, results):
+            new_xitest = base_test[samples_between_thresholds.index, :] 
+            new_ypred = model.predict(new_xitest)
+            new_ytrue = y_true[samples_between_thresholds.index]
+            assert len(new_xitest) == len(new_ypred) == len(new_ytrue)
+            
+            if metric_evaliation == 'acc':
+                performance_metric = accuracy_score(y_true=new_ytrue, y_pred=new_ypred)
+            else:
+                log.error("This metric_evaliation is not defined")
+                
+            results['Threshold {}'.format(thresholds.round(5))] = performance_metric 
+            return results
+
+
+        length = 0 
+        for index, thresholds in enumerate(tqdm(total_thresholds)):
+            if thresholds<0.4:
+                continue
+            elif thresholds==0.4:
+                samples_between_thresholds = table_analysis.loc[(table_analysis[thref] < thresholds)]
+            elif thresholds==1.0:
+                samples_between_thresholds = table_analysis.loc[(table_analysis[thref] <= thresholds) & (table_analysis[thref] >= (total_thresholds[index-1]))]
+            else:
+                samples_between_thresholds = table_analysis.loc[(table_analysis[thref] < thresholds) & (table_analysis[thref] >= (total_thresholds[index-1]))] 
+            length += len(samples_between_thresholds)
+            if len(samples_between_thresholds) == 0:
+                results[thresholds] = None
+            else:
+                results = get_table(thresholds, samples_between_thresholds, base_test, model, y_true, metric_evaliation, results)
+        assert len(table_analysis) == length 
+        return results
+
+
+def check_substances_in_ad(df_train: pd.DataFrame, df_train_name: str, df_test: pd.DataFrame) -> pd.DataFrame:
+    x_train = create_fingerprint_df(df=df_train)
+    x_train = x_train.values
+    x_test = create_fingerprint_df(df=df_test)
+    x_test = x_test.values
+
+    AD = ApplicabilityDomain(verbose=True)
+    df_similarities = AD.analyze_similarity(base_test=x_test, base_train=x_train, similarity_metric="tanimoto")
+    assert len(df_test) == len(df_similarities)
+    df_test.reset_index(inplace=True, drop=True)
+    df_similarities.reset_index(inplace=True, drop=True)
+    df_test[f"in_ad_of_{df_train_name}"] = 1
+    df_test.loc[df_similarities['Max'] < 0.5, f"in_ad_of_{df_train_name}"] = 0
+
+    return df_test
+
+
+
+
+
+
+
 
