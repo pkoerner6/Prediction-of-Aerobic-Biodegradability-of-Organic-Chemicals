@@ -152,7 +152,6 @@ def check_external_test_in_ad(df_train: pd.DataFrame, df_test: pd.DataFrame):
 def calculate_tanimoto_similarity_class_huang():
     log.info("\n Define AD of classification data Huang and Zhang")
     _, _, df_class_huang = load_class_data_paper()
-    df_class_huang = df_class_huang[:200] # TODO
     model = XGBClassifier()
     calculate_tanimoto_similarity_class(df=df_class_huang, model_with_best_params=model)
 
@@ -160,27 +159,24 @@ def calculate_tanimoto_similarity_class_huang():
 def calculate_tanimoto_similarity_curated_scs():
     log.info("\n Define AD of df_curated_scs")
     df_curated_scs, _, _ = get_datasets_for_ad()
-    df_curated_scs = df_curated_scs[:200] # TODO
     model = XGBClassifier()
     calculate_tanimoto_similarity_class(df=df_curated_scs, model_with_best_params=model)
 
 def calculate_tanimoto_similarity_curated_biowin():
     log.info("\n Define AD of df_curated_biowin")
     _, df_curated_biowin, _ = get_datasets_for_ad()
-    df_curated_biowin = df_curated_biowin[:200] # TODO
     model = XGBClassifier()
     calculate_tanimoto_similarity_class(df=df_curated_biowin, model_with_best_params=model)
 
 def calculate_tanimoto_similarity_curated_final():
     log.info("\n Define AD of df_curated_final")
     _, _, df_curated_final = get_datasets_for_ad()
-    df_curated_final = df_curated_final[:200] # TODO
     model = XGBClassifier()
     calculate_tanimoto_similarity_class(df=df_curated_final, model_with_best_params=model)
 
 
 def check_how_much_of_dsstox_in_ad_class():
-    df_dsstox = get_dsstox()[:500] # TODO
+    df_dsstox = get_dsstox()
     log.info("\n Check if DSStox sets in AD of Readded classification")
     df_curated_scs, df_curated_biowin, df_curated_final = get_datasets_for_ad()
     df_dsstox1 = df_dsstox[:200000]
