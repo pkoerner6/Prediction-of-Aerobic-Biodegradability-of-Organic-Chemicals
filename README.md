@@ -27,6 +27,10 @@ source molgpka_venv/bin/activate
 pip install -r requirements_molgpka.txt
 ```
 
+## Applying the models to make predictions on new substances
+If you want to use the provided classifiers to predict the ready biodegradability of organic substances, you can use the apply_models_example.ipynb file. 
+
+
 ## Overview of the scripts
 
 ### processing_functions.py
@@ -36,7 +40,7 @@ Contains all kinds of functions used in the other scripts.
 Contains functions for creating, validating, and testing machine learning models. 
 
 ### data_processing.py
-This file carries out the steps described in the SMILES-Retrieval-Pipeline to create the $\text{Curated}_\text{S}$ and the $\text{Curated}_\text{SCS}$ datasets. It uses the dataset iuclid_echa.csv which includes information on biodegradation screening tests from REACH. The code for retrieving this data will be published seperately.
+This file carries out the steps described in the SMILES-Retrieval-Pipeline to create the $\text{Curated}_\text{S}$ and the $\text{Curated}_\text{SCS}$ datasets. It uses the dataset iuclid_echa.csv, which includes information on biodegradation screening tests from REACH. The code for retrieving this data will be published separately.
 
 ### add_pka_values.py
 To run this file, the molgpka_venv needs to be activated. 
