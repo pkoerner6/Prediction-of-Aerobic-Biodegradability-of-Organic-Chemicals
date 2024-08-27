@@ -64,10 +64,10 @@ def test_get_problematic_studies_echa():
 
 def test_remove_studies_where_registered_substance_dont_match_reference_substance():
     df_reg, df_unique_cas, df_checked = get_dfs()
-    df_a, _, df_a_full_original, _ = get_df_a_and_b(df_unique_cas=df_unique_cas, df_checked=df_checked, df_reg=df_reg)
+    _, _, df_a_full_original, _ = get_df_a_and_b(df_unique_cas=df_unique_cas, df_checked=df_checked, df_reg=df_reg)
     df_checked, _, _, _, _ = load_datasets()
     df_a_full = replace_smiles_with_smiles_gluege(df_a_full_original, df_checked)
-    df_a_full = remove_studies_where_registered_substance_dont_match_reference_substance(df_a_full, df_a)
+    df_a_full = remove_studies_where_registered_substance_dont_match_reference_substance(df_a_full)
     df_echa_problematic_ref = get_problematic_studies_echa()
 
     def remove_problematic_studies(row):

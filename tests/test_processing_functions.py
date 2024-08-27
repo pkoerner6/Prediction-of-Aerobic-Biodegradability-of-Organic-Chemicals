@@ -123,7 +123,7 @@ def test_group_and_label_chemicals(group_remove_duplicates):
 
 
 def test_get_cid_from_inchi_pubchempy():
-    df_lunghini = pd.read_csv("datasets/external_data/lunghini.csv", sep=";", index_col=0)[:6]
+    df_lunghini = pd.read_csv("datasets/external_data/lunghini_added_cas.csv", sep=";", index_col=0)[:6]
     df_lunghini.rename(
         columns={
             "SMILES": "smiles",
@@ -161,20 +161,20 @@ def test_get_all_cas_pubchem():
         unique_cass.append(unique_cas)
         ref_strs.append(ref_str)
     assert unique_cass == [
-        "588-72-7, 1335-06-4, 103-64-0",
+        "103-64-0, 588-72-7, 1335-06-4",
         "590-11-4, 540-49-8",
-        "588-73-8, 1335-06-4, 588-72-7",
+        "1335-06-4, 588-73-8, 588-72-7",
         "75-25-2, 4471-18-5",
         "79-27-6",
         "30171-80-3",
     ]
     assert ref_strs == [
-        "588-72-7: CAS Common Chemistry, ChemIDplus, EPA DSSTox, FDA Global Substance Registration System (GSRS); 103-64-0: ChemIDplus, DTP/NCI, EPA Chemicals under the TSCA, European Chemicals Agency (ECHA), Hazardous Substances Data Bank (HSDB); 1335-06-4: European Chemicals Agency (ECHA)",
+        "103-64-0: Australian Industrial Chemicals Introduction Scheme (AICIS), ChemIDplus, DTP/NCI, EPA Chemicals under the TSCA, European Chemicals Agency (ECHA), Hazardous Substances Data Bank (HSDB), New Zealand Environmental Protection Authority (EPA); 588-72-7: CAS Common Chemistry, ChemIDplus, EPA DSSTox, FDA Global Substance Registration System (GSRS); 1335-06-4: CAS Common Chemistry, European Chemicals Agency (ECHA)",
         "590-11-4: ChemIDplus, EPA DSSTox, FDA Global Substance Registration System (GSRS); 540-49-8: DTP/NCI",
-        "588-73-8: ChemIDplus, DTP/NCI, FDA Global Substance Registration System (GSRS); 1335-06-4: ChemIDplus, EPA Chemicals under the TSCA, European Chemicals Agency (ECHA); 588-72-7: DTP/NCI",
-        "75-25-2: CAMEO Chemicals, CAS Common Chemistry, ChemIDplus, DrugBank, DTP/NCI, EPA Chemicals under the TSCA, EPA DSSTox, European Chemicals Agency (ECHA), FDA Global Substance Registration System (GSRS), Hazardous Substances Data Bank (HSDB), ILO-WHO International Chemical Safety Cards (ICSCs), Occupational Safety and Health Administration (OSHA), The National Institute for Occupational Safety and Health (NIOSH); 4471-18-5: ChemIDplus",
-        "79-27-6: CAMEO Chemicals, CAS Common Chemistry, ChemIDplus, DTP/NCI, EPA Chemicals under the TSCA, EPA DSSTox, European Chemicals Agency (ECHA), FDA Global Substance Registration System (GSRS), Hazardous Substances Data Bank (HSDB), ILO-WHO International Chemical Safety Cards (ICSCs), Occupational Safety and Health Administration (OSHA), The National Institute for Occupational Safety and Health (NIOSH)",
-        "30171-80-3: ChemIDplus, EPA DSSTox, European Chemicals Agency (ECHA)",
+        "1335-06-4: CAS Common Chemistry, ChemIDplus, European Chemicals Agency (ECHA); 588-73-8: ChemIDplus, DTP/NCI, FDA Global Substance Registration System (GSRS); 588-72-7: DTP/NCI",
+        "75-25-2: Australian Industrial Chemicals Introduction Scheme (AICIS), CAMEO Chemicals, CAS Common Chemistry, ChemIDplus, DrugBank, DTP/NCI, EPA Chemicals under the TSCA, EPA DSSTox, EPA Integrated Risk Information System (IRIS), EPA Provisional Peer-Reviewed Toxicity Values (PPRTVs), European Chemicals Agency (ECHA), FDA Global Substance Registration System (GSRS), Hazardous Substances Data Bank (HSDB), ILO-WHO International Chemical Safety Cards (ICSCs), New Zealand Environmental Protection Authority (EPA), Occupational Safety and Health Administration (OSHA), The National Institute for Occupational Safety and Health (NIOSH); 4471-18-5: ChemIDplus",
+        "79-27-6: Australian Industrial Chemicals Introduction Scheme (AICIS), CAMEO Chemicals, CAS Common Chemistry, ChemIDplus, DTP/NCI, EPA Chemicals under the TSCA, EPA DSSTox, European Chemicals Agency (ECHA), FDA Global Substance Registration System (GSRS), Hazardous Substances Data Bank (HSDB), ILO-WHO International Chemical Safety Cards (ICSCs), New Zealand Environmental Protection Authority (EPA), Occupational Safety and Health Administration (OSHA), The National Institute for Occupational Safety and Health (NIOSH)",
+        "30171-80-3: CAS Common Chemistry, ChemIDplus, EPA DSSTox, European Chemicals Agency (ECHA), New Zealand Environmental Protection Authority (EPA)",
     ]
 
 
@@ -231,28 +231,29 @@ def test_get_inchi_layers(df_lunghini_added_cas):
 
 
 def test_add_cas_from_pubchem():
-    df = pd.read_csv("datasets/external_data/lunghini_added_cids.csv")[:6]
+    df = pd.read_csv("datasets/external_data/lunghini_added_cas.csv")[:6]
+    df.drop(columns=["cas_pubchem", "cas_ref_pubchem", "deprecated_cas_pubchem"], inplace=True)
     df = add_cas_from_pubchem(df=df)
     for col in ["cas_pubchem", "cas_ref_pubchem", "deprecated_cas_pubchem"]:
         assert col in list(df.columns)
     assert list(df["cas_pubchem"]) == [
-        "588-72-7, 1335-06-4, 103-64-0",
+        "103-64-0, 588-72-7, 1335-06-4",
         "590-11-4, 540-49-8",
-        "588-73-8, 1335-06-4, 588-72-7",
+        "1335-06-4, 588-73-8, 588-72-7",
         "75-25-2, 4471-18-5",
         "79-27-6",
         "30171-80-3",
     ]
     assert list(df["cas_ref_pubchem"]) == [
-        "588-72-7: CAS Common Chemistry, ChemIDplus, EPA DSSTox, FDA Global Substance Registration System (GSRS); 103-64-0: ChemIDplus, DTP/NCI, EPA Chemicals under the TSCA, European Chemicals Agency (ECHA), Hazardous Substances Data Bank (HSDB); 1335-06-4: European Chemicals Agency (ECHA)",
+        "103-64-0: Australian Industrial Chemicals Introduction Scheme (AICIS), ChemIDplus, DTP/NCI, EPA Chemicals under the TSCA, European Chemicals Agency (ECHA), Hazardous Substances Data Bank (HSDB), New Zealand Environmental Protection Authority (EPA); 588-72-7: CAS Common Chemistry, ChemIDplus, EPA DSSTox, FDA Global Substance Registration System (GSRS); 1335-06-4: CAS Common Chemistry, European Chemicals Agency (ECHA)",
         "590-11-4: ChemIDplus, EPA DSSTox, FDA Global Substance Registration System (GSRS); 540-49-8: DTP/NCI",
-        "588-73-8: ChemIDplus, DTP/NCI, FDA Global Substance Registration System (GSRS); 1335-06-4: ChemIDplus, EPA Chemicals under the TSCA, European Chemicals Agency (ECHA); 588-72-7: DTP/NCI",
-        "75-25-2: CAMEO Chemicals, CAS Common Chemistry, ChemIDplus, DrugBank, DTP/NCI, EPA Chemicals under the TSCA, EPA DSSTox, European Chemicals Agency (ECHA), FDA Global Substance Registration System (GSRS), Hazardous Substances Data Bank (HSDB), ILO-WHO International Chemical Safety Cards (ICSCs), Occupational Safety and Health Administration (OSHA), The National Institute for Occupational Safety and Health (NIOSH); 4471-18-5: ChemIDplus",
-        "79-27-6: CAMEO Chemicals, CAS Common Chemistry, ChemIDplus, DTP/NCI, EPA Chemicals under the TSCA, EPA DSSTox, European Chemicals Agency (ECHA), FDA Global Substance Registration System (GSRS), Hazardous Substances Data Bank (HSDB), ILO-WHO International Chemical Safety Cards (ICSCs), Occupational Safety and Health Administration (OSHA), The National Institute for Occupational Safety and Health (NIOSH)",
-        "30171-80-3: ChemIDplus, EPA DSSTox, European Chemicals Agency (ECHA)",
+        "1335-06-4: CAS Common Chemistry, ChemIDplus, European Chemicals Agency (ECHA); 588-73-8: ChemIDplus, DTP/NCI, FDA Global Substance Registration System (GSRS); 588-72-7: DTP/NCI",
+        "75-25-2: Australian Industrial Chemicals Introduction Scheme (AICIS), CAMEO Chemicals, CAS Common Chemistry, ChemIDplus, DrugBank, DTP/NCI, EPA Chemicals under the TSCA, EPA DSSTox, EPA Integrated Risk Information System (IRIS), EPA Provisional Peer-Reviewed Toxicity Values (PPRTVs), European Chemicals Agency (ECHA), FDA Global Substance Registration System (GSRS), Hazardous Substances Data Bank (HSDB), ILO-WHO International Chemical Safety Cards (ICSCs), New Zealand Environmental Protection Authority (EPA), Occupational Safety and Health Administration (OSHA), The National Institute for Occupational Safety and Health (NIOSH); 4471-18-5: ChemIDplus",
+        "79-27-6: Australian Industrial Chemicals Introduction Scheme (AICIS), CAMEO Chemicals, CAS Common Chemistry, ChemIDplus, DTP/NCI, EPA Chemicals under the TSCA, EPA DSSTox, European Chemicals Agency (ECHA), FDA Global Substance Registration System (GSRS), Hazardous Substances Data Bank (HSDB), ILO-WHO International Chemical Safety Cards (ICSCs), New Zealand Environmental Protection Authority (EPA), Occupational Safety and Health Administration (OSHA), The National Institute for Occupational Safety and Health (NIOSH)",
+        "30171-80-3: CAS Common Chemistry, ChemIDplus, EPA DSSTox, European Chemicals Agency (ECHA), New Zealand Environmental Protection Authority (EPA)",
     ]
     assert list(df["deprecated_cas_pubchem"]) == [
-        "1340-14-3",
+        "1340-14-3, 1340-14-3",
         "",
         "41380-64-7",
         "",
@@ -460,13 +461,13 @@ def test_get_smiles_from_cas_pubchempy(df_b):
         "C(=O)(N)NO",
     ]
     assert list(df_pubchem["canonical_smiles_pubchem"]) == [
-        "",
+        "C1=CC=C2C(=C1)C3=NC4=NC(=NC5=C6C=CC=CC6=C([N-]5)N=C7C8=CC=CC=C8C(=N7)N=C2[N-]3)C9=CC=CC=C94.[Fe+2]",
         "[O-]Cl(=O)=O.[Na+]",
         "",
         "C(=O)(N)NO",
     ]
     assert list(df_pubchem["inchi_pubchem"]) == [
-        "",
+        "InChI=1S/C32H16N8.Fe/c1-2-10-18-17(9-1)25-33-26(18)38-28-21-13-5-6-14-22(21)30(35-28)40-32-24-16-8-7-15-23(24)31(36-32)39-29-20-12-4-3-11-19(20)27(34-29)37-25;/h1-16H;/q-2;+2",
         "InChI=1S/ClHO3.Na/c2-1(3)4;/h(H,2,3,4);/q;+1/p-1",
         "",
         "InChI=1S/CH4N2O2/c2-1(4)3-5/h5H,(H3,2,3,4)",
@@ -520,7 +521,7 @@ def test_get_info_cas_common_chemistry(df_b):
     ]
     assert inchis == [
         "InChI=1S/C4H2N4O3/c5-8-1-2(9)6-4(11)7-3(1)10/h(H2,6,7,9,10,11)",
-        "InChI=1S/C8H9NO2/c9-7(8(10)11)6-4-2-1-3-5-6/h1-5,7H,9H2,(H,10,11)",
+        "InChI=1S/C8H9NO2/c9-7(8(10)11)6-4-2-1-3-5-6/h1-5,7H,9H2,(H,10,11)/t7-/m1/s1",
         "InChI=1S/C8H18N2/c9-5-7-2-1-3-8(4-7)6-10/h7-8H,1-6,9-10H2",
         "InChI=1S/C6H18N4/c7-1-3-9-5-6-10-4-2-8/h9-10H,1-8H2",
         "InChI=1S/C9H24N4/c10-4-1-6-12-8-3-9-13-7-2-5-11/h12-13H,1-11H2",
@@ -805,7 +806,7 @@ def test_create_classification_data_based_on_regression_data(regression_paper):
         with_lunghini=False,
         include_speciation_lunghini=False,
         include_speciation=False,
-        prnt=False,
+        run_from_start=False
     )
 
     assert df_class.cas.to_list() == ["85-00-7", "12040-58-3", "24245-27-0"]
@@ -830,7 +831,6 @@ def test_create_classification_data_based_on_regression_data(regression_paper):
         with_lunghini=True, 
         include_speciation_lunghini=True, 
         include_speciation=True, 
-        prnt=False,
         run_from_start=False
     )
     assert df_class.columns.to_list() == cols

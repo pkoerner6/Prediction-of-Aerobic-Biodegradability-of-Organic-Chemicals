@@ -1547,7 +1547,7 @@ def plot_results_with_standard_deviation(
     test_set_name: str,
 ) -> None:
 
-    plt.figure(figsize=(15, 5))
+    plt.figure(figsize=(11, 5)) # TODO changed
 
     bplot = plt.boxplot(all_data, vert=True, patch_artist=True, labels=labels, meanline=True, showmeans=True)
 

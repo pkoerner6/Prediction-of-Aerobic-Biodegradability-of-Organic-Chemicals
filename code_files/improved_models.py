@@ -36,7 +36,6 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.linear_model import RidgeClassifierCV
 from sklearn.linear_model import RidgeClassifier
 from sklearn.neural_network import MLPClassifier
-from sklearn.metrics.pairwise import pairwise_kernels
 
 
 np.int = int  # Because of scikit-optimize
