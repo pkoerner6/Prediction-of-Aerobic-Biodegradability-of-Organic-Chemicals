@@ -28,7 +28,7 @@ pip install -r requirements_molgpka.txt
 ```
 
 ## Applying the models to make predictions on new substances
-If you want to use the provided classifiers to predict the ready biodegradability of organic substances, you can use our [Biodegradability prediction app]([https://iuclid6.echa.europa.eu](https://biodegradability-prediction-app.streamlit.app)) or the apply_models_example.ipynb file. 
+If you want to use the provided classifiers to predict the ready biodegradability of organic substances, you can use our [Biodegradability prediction app](https://biodegradability-prediction-app.streamlit.app) or the apply_models_example.ipynb file. 
 
 
 ## Overview of the scripts
